@@ -52,8 +52,8 @@ async function clipCurrentTab() {
     elements.pageStatus.textContent = "Saving";
     const saveResult = await saveSong(song);
     renderPreview(saveResult.song);
-    setMessage(saveResult.openedApp ? "Opened Songbook to import the clip." : "Saved to local songbook.");
-    elements.pageStatus.textContent = saveResult.openedApp ? "Opened" : "Done";
+    setMessage(saveResult.openedApp ? "Imported into Songbook." : "Saved to local songbook.");
+    elements.pageStatus.textContent = "Done";
   } catch (error) {
     setMessage(error.message || "Clip failed.", true);
     elements.pageStatus.textContent = "Not saved";
@@ -86,8 +86,13 @@ async function saveSong(song) {
     }
   }
 
-  const importUrl = `${appUrl}/#import=${encodeBase64Url(JSON.stringify(song))}`;
-  await chrome.tabs.create({ url: importUrl, active: true });
+  const appTab = await chrome.tabs.create({ url: appUrl, active: true });
+  await waitForTabComplete(appTab.id);
+  await chrome.scripting.executeScript({
+    target: { tabId: appTab.id },
+    func: importSongIntoSongbookPage,
+    args: [song]
+  });
   return { song, openedApp: true };
 }
 
@@ -120,13 +125,80 @@ function isLocalAppUrl(value) {
   }
 }
 
-function encodeBase64Url(value) {
-  const bytes = new TextEncoder().encode(value);
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
+function waitForTabComplete(tabId) {
+  return new Promise((resolve, reject) => {
+    if (!tabId) {
+      reject(new Error("Could not open Songbook tab."));
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      reject(new Error("Songbook did not finish loading."));
+    }, 15000);
+
+    const listener = (updatedTabId, changeInfo) => {
+      if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
+      clearTimeout(timeoutId);
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve();
+    };
+
+    chrome.tabs.onUpdated.addListener(listener);
   });
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function importSongIntoSongbookPage(song) {
+  const DB_NAME = "songbook";
+  const DB_VERSION = 1;
+  const SONG_STORE = "songs";
+
+  const normalizedSong = normalizeSong(song);
+
+  return openDb()
+    .then((db) => new Promise((resolve, reject) => {
+      const transaction = db.transaction(SONG_STORE, "readwrite");
+      transaction.objectStore(SONG_STORE).put(normalizedSong);
+      transaction.oncomplete = () => resolve(normalizedSong);
+      transaction.onerror = () => reject(transaction.error);
+    }))
+    .then((savedSong) => {
+      window.dispatchEvent(new CustomEvent("songbook:clip-imported", { detail: savedSong }));
+      return savedSong;
+    });
+
+  function openDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(SONG_STORE)) {
+          const store = db.createObjectStore(SONG_STORE, { keyPath: "id" });
+          store.createIndex("updatedAt", "updatedAt");
+          store.createIndex("sourceUrl", "sourceUrl");
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  function normalizeSong(input) {
+    const timestamp = new Date().toISOString();
+    return {
+      id: input.id || crypto.randomUUID(),
+      title: String(input.title || "Untitled song").trim(),
+      artist: String(input.artist || "Unknown artist").trim(),
+      key: String(input.key || "").trim(),
+      capo: String(input.capo || "").trim(),
+      tuning: String(input.tuning || "").trim(),
+      tags: Array.isArray(input.tags) ? input.tags.map(String).filter(Boolean) : [],
+      sourceUrl: String(input.sourceUrl || "").trim(),
+      rawContent: String(input.rawContent || "").replace(/\r\n?/g, "\n").trim(),
+      createdAt: input.createdAt || timestamp,
+      updatedAt: input.updatedAt || timestamp
+    };
+  }
 }
 
 function isUltimateGuitarUrl(value) {

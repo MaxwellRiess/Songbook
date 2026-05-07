@@ -183,6 +183,15 @@ function bindEvents() {
     event.preventDefault();
     await saveSupabaseSettings();
   });
+
+  window.addEventListener("songbook:clip-imported", async (event) => {
+    const song = normalizeSong(event.detail || {});
+    state.songs = await getStoredSongs();
+    state.selectedId = song.id;
+    await syncSongToSupabase(song);
+    render();
+    toast("Clipped song imported");
+  });
 }
 
 function render() {
