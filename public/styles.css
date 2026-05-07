@@ -57,6 +57,23 @@ button:disabled {
   min-height: 100vh;
 }
 
+.app-shell.sidebar-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell.sidebar-collapsed .library-panel {
+  display: none;
+}
+
+.sidebar-toggle {
+  flex-shrink: 0;
+}
+
+.song-title-group {
+  flex: 1;
+  min-width: 0;
+}
+
 .library-panel {
   display: flex;
   flex-direction: column;
@@ -551,6 +568,10 @@ textarea {
   .toolbar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .sidebar-toggle {
+    align-self: flex-start;
   }
 
   .header-actions {

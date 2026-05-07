@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <main class="app-shell">
+    <main id="appShell" class="app-shell">
       <aside class="library-panel" aria-label="Song library">
         <div class="brand-row">
           <div>
@@ -51,7 +51,10 @@
 
       <section class="song-panel" aria-label="Selected song">
         <header class="song-header">
-          <div>
+          <button id="sidebarToggle" class="icon-button sidebar-toggle" type="button" title="Toggle library" aria-label="Toggle library" aria-controls="appShell" aria-expanded="true">
+            <span aria-hidden="true">&#9776;</span>
+          </button>
+          <div class="song-title-group">
             <p id="artistMeta" class="eyebrow">No song selected</p>
             <h2 id="songTitle">Add or import a song</h2>
             <div id="songMeta" class="song-meta"></div>
