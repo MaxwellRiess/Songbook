@@ -17,6 +17,8 @@ const state = {
 };
 
 const elements = {
+  appShell: document.querySelector("#appShell"),
+  sidebarToggle: document.querySelector("#sidebarToggle"),
   songCount: document.querySelector("#songCount"),
   songList: document.querySelector("#songList"),
   searchInput: document.querySelector("#searchInput"),
@@ -63,6 +65,7 @@ const elements = {
 };
 
 const SUPABASE_CONFIG_KEY = "songbook.supabase.config";
+const SIDEBAR_COLLAPSED_KEY = "songbook.sidebar.collapsed";
 const DB_NAME = "songbook";
 const DB_VERSION = 1;
 const SONG_STORE = "songs";
@@ -84,6 +87,7 @@ if (clippedSong) {
   state.selectedId = clippedSong.id;
   await syncSongToSupabase(clippedSong);
 }
+restoreSidebarState();
 bindEvents();
 render();
 if (clippedSong) toast("Clipped song imported");
@@ -125,6 +129,10 @@ function bindEvents() {
     } finally {
       setBusy(elements.importForm, false);
     }
+  });
+
+  elements.sidebarToggle.addEventListener("click", () => {
+    setSidebarCollapsed(!elements.appShell.classList.contains("sidebar-collapsed"));
   });
 
   elements.newSongButton.addEventListener("click", () => openSongDialog());
@@ -1025,6 +1033,31 @@ function setBusy(element, isBusy) {
   element.querySelectorAll("button, input").forEach((control) => {
     control.disabled = isBusy;
   });
+}
+
+function setSidebarCollapsed(collapsed) {
+  elements.appShell.classList.toggle("sidebar-collapsed", collapsed);
+  elements.sidebarToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  elements.sidebarToggle.title = collapsed ? "Show library" : "Hide library";
+  try {
+    if (collapsed) {
+      localStorage.setItem(SIDEBAR_COLLAPSED_KEY, "1");
+    } else {
+      localStorage.removeItem(SIDEBAR_COLLAPSED_KEY);
+    }
+  } catch (error) {
+    // localStorage may be unavailable (private mode, etc.); state still toggles for the session.
+  }
+}
+
+function restoreSidebarState() {
+  let collapsed = false;
+  try {
+    collapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch (error) {
+    collapsed = false;
+  }
+  setSidebarCollapsed(collapsed);
 }
 
 function toast(message, isError = false) {
