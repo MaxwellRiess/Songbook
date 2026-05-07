@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Songbook Clipper</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Songbook Clipper</h1>
+        <p id="pageStatus">Ready</p>
+      </header>
+
+      <section id="preview" class="preview hidden">
+        <strong id="songTitle"></strong>
+        <span id="songArtist"></span>
+      </section>
+
+      <label>
+        <span>Local app URL</span>
+        <input id="appUrlInput" value="http://127.0.0.1:3000">
+      </label>
+
+      <button id="clipButton" type="button">Clip current tab</button>
+      <p id="message" role="status" aria-live="polite"></p>
+    </main>
+
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>

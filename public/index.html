@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#1f7a62">
+    <title>Lyrics & Chords</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="library-panel" aria-label="Song library">
+        <div class="brand-row">
+          <div>
+            <h1>Songbook</h1>
+            <p id="songCount">0 songs</p>
+          </div>
+          <button id="newSongButton" class="icon-button" type="button" title="New song" aria-label="New song">
+            <span aria-hidden="true">+</span>
+          </button>
+        </div>
+
+        <label class="search-box">
+          <span>Search</span>
+          <input id="searchInput" type="search" placeholder="Title, artist, lyrics, chord">
+        </label>
+
+        <form id="importForm" class="import-form">
+          <label>
+            <span>URL Import</span>
+            <input id="importUrl" type="url" placeholder="https://tabs.ultimate-guitar.com/...">
+          </label>
+          <button type="submit">Import</button>
+        </form>
+
+        <div class="sync-panel">
+          <div>
+            <span>Sync</span>
+            <strong id="syncStatus">Local only</strong>
+          </div>
+          <div class="sync-actions">
+            <button id="syncNowButton" type="button" disabled>Sync</button>
+            <button id="syncSettingsButton" type="button">Settings</button>
+          </div>
+        </div>
+
+        <div id="songList" class="song-list" role="list"></div>
+      </aside>
+
+      <section class="song-panel" aria-label="Selected song">
+        <header class="song-header">
+          <div>
+            <p id="artistMeta" class="eyebrow">No song selected</p>
+            <h2 id="songTitle">Add or import a song</h2>
+            <div id="songMeta" class="song-meta"></div>
+          </div>
+          <div class="header-actions">
+            <button id="editButton" type="button" disabled>Edit</button>
+            <button id="deleteButton" class="danger-button" type="button" disabled>Delete</button>
+          </div>
+        </header>
+
+        <div class="toolbar">
+          <label>
+            <span>Transpose</span>
+            <select id="transposeSelect">
+              <option value="-6">-6</option>
+              <option value="-5">-5</option>
+              <option value="-4">-4</option>
+              <option value="-3">-3</option>
+              <option value="-2">-2</option>
+              <option value="-1">-1</option>
+              <option value="0" selected>0</option>
+              <option value="1">+1</option>
+              <option value="2">+2</option>
+              <option value="3">+3</option>
+              <option value="4">+4</option>
+              <option value="5">+5</option>
+              <option value="6">+6</option>
+            </select>
+          </label>
+          <label>
+            <span>Size</span>
+            <input id="fontSizeInput" type="range" min="13" max="24" value="16">
+          </label>
+          <button id="copyButton" type="button" disabled>Copy</button>
+        </div>
+
+        <div id="viewer" class="viewer empty-state">
+          <p>Import a tab URL or create a song manually.</p>
+        </div>
+
+        <div id="autoscrollControls" class="autoscroll-controls" aria-label="Autoscroll controls">
+          <button id="autoscrollToggle" type="button" disabled>Start</button>
+          <label>
+            <span>Speed</span>
+            <input id="autoscrollSpeed" type="range" min="10" max="160" value="45">
+          </label>
+          <output id="autoscrollSpeedValue" for="autoscrollSpeed">45 px/s</output>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="songDialog">
+      <form id="songForm" method="dialog">
+        <div class="dialog-header">
+          <h2 id="dialogTitle">New song</h2>
+          <button id="closeDialogButton" class="icon-button" type="button" title="Close" aria-label="Close">
+            <span aria-hidden="true">x</span>
+          </button>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>Title</span>
+            <input id="titleInput" required>
+          </label>
+          <label>
+            <span>Artist</span>
+            <input id="artistInput" required>
+          </label>
+          <label>
+            <span>Key</span>
+            <input id="keyInput" placeholder="D">
+          </label>
+          <label>
+            <span>Capo</span>
+            <input id="capoInput" placeholder="2">
+          </label>
+          <label>
+            <span>Tuning</span>
+            <input id="tuningInput" placeholder="Standard">
+          </label>
+          <label>
+            <span>Tags</span>
+            <input id="tagsInput" placeholder="setlist, acoustic">
+          </label>
+        </div>
+
+        <label class="content-label">
+          <span>Lyrics and chords</span>
+          <textarea id="contentInput" spellcheck="false" placeholder="[Verse]&#10;[ch]G[/ch]Amazing [ch]D[/ch]grace"></textarea>
+        </label>
+
+        <div class="dialog-actions">
+          <button id="cancelButton" type="button">Cancel</button>
+          <button type="submit">Save song</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="syncDialog">
+      <form id="syncForm" method="dialog">
+        <div class="dialog-header">
+          <h2>Supabase sync</h2>
+          <button id="closeSyncDialogButton" class="icon-button" type="button" title="Close" aria-label="Close">
+            <span aria-hidden="true">x</span>
+          </button>
+        </div>
+
+        <div class="form-grid">
+          <label>
+            <span>Project URL</span>
+            <input id="supabaseUrlInput" type="url" placeholder="https://your-project.supabase.co">
+          </label>
+          <label>
+            <span>Anon key</span>
+            <input id="supabaseAnonKeyInput" type="password" autocomplete="off">
+          </label>
+          <label>
+            <span>Email</span>
+            <input id="syncEmailInput" type="email" autocomplete="email">
+          </label>
+        </div>
+
+        <div class="dialog-actions">
+          <button id="signOutButton" type="button">Sign out</button>
+          <button id="sendMagicLinkButton" type="button">Send magic link</button>
+          <button type="submit">Save settings</button>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
