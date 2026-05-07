@@ -52,7 +52,7 @@ async function clipCurrentTab() {
     elements.pageStatus.textContent = "Saving";
     const saveResult = await saveSong(song);
     renderPreview(saveResult.song);
-    setMessage(saveResult.openedApp ? "Imported into Songbook." : "Saved to local songbook.");
+    setMessage(saveResult.openedApp ? "Saved to Songbook." : "Saved to local songbook.");
     elements.pageStatus.textContent = "Done";
   } catch (error) {
     setMessage(error.message || "Clip failed.", true);
@@ -86,13 +86,16 @@ async function saveSong(song) {
     }
   }
 
-  const appTab = await chrome.tabs.create({ url: appUrl, active: true });
+  const { tab: appTab, shouldClose } = await getSongbookTab(appUrl);
   await waitForTabComplete(appTab.id);
   await chrome.scripting.executeScript({
     target: { tabId: appTab.id },
     func: importSongIntoSongbookPage,
     args: [song]
   });
+  if (shouldClose) {
+    await chrome.tabs.remove(appTab.id);
+  }
   return { song, openedApp: true };
 }
 
@@ -125,6 +128,13 @@ function isLocalAppUrl(value) {
   }
 }
 
+async function getSongbookTab(appUrl) {
+  const appPattern = `${appUrl}*`;
+  const existingTabs = await chrome.tabs.query({ url: appPattern });
+  const tab = existingTabs[0] || await chrome.tabs.create({ url: appUrl, active: false });
+  return { tab, shouldClose: !existingTabs.length };
+}
+
 function waitForTabComplete(tabId) {
   return new Promise((resolve, reject) => {
     if (!tabId) {
@@ -145,6 +155,13 @@ function waitForTabComplete(tabId) {
     };
 
     chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.get(tabId, (tab) => {
+      if (!chrome.runtime.lastError && tab?.status === "complete") {
+        clearTimeout(timeoutId);
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    });
   });
 }
 
