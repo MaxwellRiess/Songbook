@@ -304,25 +304,16 @@ function renderLine(line, transpose) {
     return chordLine;
   }
 
-  const parsed = parseChordLine(line, transpose);
-  const wrapper = document.createElement("div");
-  wrapper.className = parsed.hasChords ? "sheet-line has-chords" : "sheet-line";
+  const parsed = parseChordLine(line, 0);
 
   if (!parsed.hasChords) {
-    wrapper.textContent = cleanedLine;
+    const wrapper = document.createElement("div");
+    wrapper.className = "sheet-line";
+    wrapper.textContent = parsed.lyrics;
     return wrapper;
   }
 
-  const chordLine = document.createElement("div");
-  chordLine.className = "chord-line";
-  chordLine.textContent = parsed.chords || " ";
-
-  const lyricLine = document.createElement("div");
-  lyricLine.className = "lyric-line";
-  lyricLine.textContent = parsed.lyrics || " ";
-
-  wrapper.append(chordLine, lyricLine);
-  return wrapper;
+  return renderResponsiveChordLyricPair(parsed.chords, parsed.lyrics, transpose);
 }
 
 function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose) {
