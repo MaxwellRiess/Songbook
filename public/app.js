@@ -158,11 +158,17 @@ function bindEvents() {
   });
 
   elements.autoscrollToggle.addEventListener("click", () => {
-    if (state.autoscrollActive) {
-      stopAutoscroll();
-    } else {
-      startAutoscroll();
-    }
+    toggleAutoscroll();
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.code !== "Space" && event.key !== " ") return;
+    if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+    if (isTypingTarget(event.target)) return;
+    if (elements.dialog?.open || elements.syncDialog?.open) return;
+    if (!getSelectedSong()) return;
+    event.preventDefault();
+    toggleAutoscroll();
   });
 
   elements.autoscrollSpeed.addEventListener("input", () => {
@@ -421,7 +427,7 @@ function parseChordLine(line, transpose) {
 function transposeChord(chord, steps) {
   if (!steps) return chord;
 
-  return chord.replace(/(^|[^A-Ga-g#b])([A-G])([#b]?)(?=(?:m|maj|min|dim|aug|sus|add|[0-9()/+\-]|$))/g, (full, prefix, note, accidental) => {
+  return chord.replace(/(^|[^A-Ga-g#b])([A-G])([#b]?)(?=(?:[Mm]aj|[Mm]in|[Dd]im|[Aa]ug|[Ss]us|[Aa]dd|[Nn]o|m|M|[0-9()/+\-]|$))/g, (full, prefix, note, accidental) => {
     const normalized = `${note.toUpperCase()}${accidental || ""}`;
     const sharpNote = FLAT_TO_SHARP[normalized] || normalized;
     const index = NOTES_SHARP.indexOf(sharpNote);
@@ -449,7 +455,7 @@ function isPlainChordLine(line) {
 
 function isChordToken(token) {
   const normalized = token.replace(/[.,;:]+$/g, "").replace(/^\((.*)\)$/, "$1");
-  return /^[A-G](?:#|b)?(?:(?:m|maj|min|dim|aug|sus|add|M|no)?[0-9#b+\-()]*)*(?:\/[A-G](?:#|b)?)?$/.test(normalized);
+  return /^[A-G](?:#|b)?(?:(?:[Mm]aj|[Mm]in|[Dd]im|[Aa]ug|[Ss]us|[Aa]dd|[Nn]o|m|M)?[0-9#b+\-()]*)*(?:\/[A-G](?:#|b)?)?$/.test(normalized);
 }
 
 function isBarToken(token) {
@@ -1033,6 +1039,23 @@ function setBusy(element, isBusy) {
   element.querySelectorAll("button, input").forEach((control) => {
     control.disabled = isBusy;
   });
+}
+
+function toggleAutoscroll() {
+  if (state.autoscrollActive) {
+    stopAutoscroll();
+  } else {
+    startAutoscroll();
+  }
+}
+
+function isTypingTarget(target) {
+  if (!target) return false;
+  if (target instanceof HTMLInputElement) return true;
+  if (target instanceof HTMLTextAreaElement) return true;
+  if (target instanceof HTMLSelectElement) return true;
+  if (target.isContentEditable) return true;
+  return false;
 }
 
 function setSidebarCollapsed(collapsed) {
