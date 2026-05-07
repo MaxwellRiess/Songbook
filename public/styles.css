@@ -505,28 +505,6 @@ textarea {
     white-space: normal;
   }
 
-  .sheet-line.has-chords {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px 10px;
-    margin: 12px 0;
-  }
-
-  .sheet-line.has-chords .chord-line,
-  .sheet-line.has-chords .lyric-line {
-    min-height: 0;
-  }
-
-  .sheet-line.has-chords .chord-line {
-    flex-basis: 100%;
-    white-space: pre-wrap;
-  }
-
-  .sheet-line.has-chords .lyric-line {
-    flex-basis: 100%;
-    white-space: normal;
-  }
-
   .chord-lyric-pair {
     margin: 12px 0;
   }
@@ -546,7 +524,7 @@ textarea {
   .mobile-flow-segment {
     display: inline-grid;
     grid-template-rows: auto auto;
-    min-width: max-content;
+    min-width: 0;
     max-width: 100%;
     break-inside: avoid;
   }
