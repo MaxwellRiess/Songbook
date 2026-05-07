@@ -355,15 +355,32 @@ function buildMobileChordLyricSegments(chordLine, lyricLine, transpose) {
   const chordMatches = [...chordLine.matchAll(/\S+/g)].filter((match) => isChordToken(match[0]));
   if (!chordMatches.length) return [{ chord: "", lyric: lyricLine.trim() }];
 
-  return chordMatches.map((match, index) => {
-    const start = Math.min(match.index || 0, lyricLine.length);
-    const end = index + 1 < chordMatches.length ? Math.min(chordMatches[index + 1].index || lyricLine.length, lyricLine.length) : lyricLine.length;
-    const lyric = lyricLine.slice(start, end).trim() || (index === 0 ? lyricLine.trim() : "");
-    return {
-      chord: transposeChord(match[0], transpose),
+  const snapToWordStart = (rawPos) => {
+    if (rawPos <= 0) return 0;
+    let p = Math.min(rawPos, lyricLine.length);
+    while (p > 0 && !/\s/.test(lyricLine[p - 1])) p -= 1;
+    return p;
+  };
+
+  const positions = chordMatches.map((match) => snapToWordStart(match.index || 0));
+  const segments = [];
+
+  if (positions[0] > 0) {
+    const leading = lyricLine.slice(0, positions[0]).trim();
+    if (leading) segments.push({ chord: "", lyric: leading });
+  }
+
+  for (let i = 0; i < chordMatches.length; i += 1) {
+    const start = positions[i];
+    const end = i + 1 < chordMatches.length ? positions[i + 1] : lyricLine.length;
+    const lyric = lyricLine.slice(start, end).trim();
+    segments.push({
+      chord: transposeChord(chordMatches[i][0], transpose),
       lyric
-    };
-  }).filter((segment) => segment.chord || segment.lyric);
+    });
+  }
+
+  return segments.filter((segment) => segment.chord || segment.lyric);
 }
 
 function parseChordLine(line, transpose) {
