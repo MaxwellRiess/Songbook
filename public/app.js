@@ -269,7 +269,17 @@ function renderSheet(song) {
   const normalized = stripTabTags(song.rawContent || "");
   const lines = normalized.split("\n");
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const nextLine = lines[index + 1] || "";
+    const cleanedLine = removeUgTags(line);
+
+    if (isPlainChordLine(cleanedLine) && nextLine.trim() && !isPlainChordLine(removeUgTags(nextLine))) {
+      fragment.append(renderResponsiveChordLyricPair(cleanedLine, removeUgTags(nextLine), state.transpose));
+      index += 1;
+      continue;
+    }
+
     const row = renderLine(line, state.transpose);
     fragment.append(row);
   }
@@ -313,6 +323,56 @@ function renderLine(line, transpose) {
 
   wrapper.append(chordLine, lyricLine);
   return wrapper;
+}
+
+function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "sheet-line chord-lyric-pair";
+
+  const desktopChordLine = document.createElement("div");
+  desktopChordLine.className = "plain-chord-line pair-desktop-chords";
+  desktopChordLine.textContent = transposeChordLine(chordLine, transpose);
+
+  const desktopLyricLine = document.createElement("div");
+  desktopLyricLine.className = "pair-desktop-lyrics";
+  desktopLyricLine.textContent = lyricLine;
+
+  const mobileLine = document.createElement("div");
+  mobileLine.className = "mobile-flow-line";
+
+  buildMobileChordLyricSegments(chordLine, lyricLine, transpose).forEach((segment) => {
+    const item = document.createElement("span");
+    item.className = "mobile-flow-segment";
+
+    const chord = document.createElement("span");
+    chord.className = "mobile-flow-chord";
+    chord.textContent = segment.chord || "\u00a0";
+
+    const lyric = document.createElement("span");
+    lyric.className = "mobile-flow-lyric";
+    lyric.textContent = segment.lyric || "\u00a0";
+
+    item.append(chord, lyric);
+    mobileLine.append(item);
+  });
+
+  wrapper.append(desktopChordLine, desktopLyricLine, mobileLine);
+  return wrapper;
+}
+
+function buildMobileChordLyricSegments(chordLine, lyricLine, transpose) {
+  const chordMatches = [...chordLine.matchAll(/\S+/g)].filter((match) => isChordToken(match[0]));
+  if (!chordMatches.length) return [{ chord: "", lyric: lyricLine.trim() }];
+
+  return chordMatches.map((match, index) => {
+    const start = Math.min(match.index || 0, lyricLine.length);
+    const end = index + 1 < chordMatches.length ? Math.min(chordMatches[index + 1].index || lyricLine.length, lyricLine.length) : lyricLine.length;
+    const lyric = lyricLine.slice(start, end).trim() || (index === 0 ? lyricLine.trim() : "");
+    return {
+      chord: transposeChord(match[0], transpose),
+      lyric
+    };
+  }).filter((segment) => segment.chord || segment.lyric);
 }
 
 function parseChordLine(line, transpose) {
