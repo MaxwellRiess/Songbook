@@ -42,14 +42,14 @@ https://maxwellriess.github.io/Songbook/
 
 ## Ultimate Guitar Import
 
-The hosted PWA cannot server-scrape Ultimate Guitar pages. Use the browser extension clipper instead:
+The hosted PWA does not server-scrape Ultimate Guitar pages. Use the browser extension clipper instead:
 
 1. Open a tab on `tabs.ultimate-guitar.com` or `ultimate-guitar.com`
 2. Click **Songbook Clipper**
 3. Keep the app URL as `https://maxwellriess.github.io/Songbook`
 4. Click **Clip current tab**
 
-The extension opens Songbook with an import payload. Songbook saves it into IndexedDB and syncs it to Supabase when you are signed in.
+The extension saves the clipped song into Songbook's IndexedDB storage and syncs it to Supabase when you are signed in.
 
 Manual entry still accepts Ultimate Guitar chord markup such as:
 

@@ -310,6 +310,7 @@ textarea:focus {
 
 .viewer {
   overflow: auto;
+  overflow-x: hidden;
   min-width: 0;
   padding: 32px 32px 104px;
 }
@@ -515,10 +516,34 @@ textarea {
   .sheet {
     white-space: normal;
     overflow-wrap: anywhere;
+    word-break: normal;
   }
 
   .sheet-line {
     min-height: 0;
+    white-space: normal;
+  }
+
+  .sheet-line.has-chords {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    margin: 12px 0;
+  }
+
+  .sheet-line.has-chords .chord-line,
+  .sheet-line.has-chords .lyric-line {
+    min-height: 0;
+  }
+
+  .sheet-line.has-chords .chord-line {
+    flex-basis: 100%;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .sheet-line.has-chords .lyric-line {
+    flex-basis: 100%;
     white-space: normal;
   }
 
@@ -544,6 +569,7 @@ textarea {
     min-width: 0;
     max-width: 100%;
     break-inside: avoid;
+    overflow-wrap: anywhere;
   }
 
   .mobile-flow-chord {
@@ -558,10 +584,12 @@ textarea {
     line-height: 1.35;
     white-space: normal;
     overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .plain-chord-line {
-    white-space: pre-wrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   .song-header,

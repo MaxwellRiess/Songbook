@@ -22,8 +22,6 @@ const elements = {
   songCount: document.querySelector("#songCount"),
   songList: document.querySelector("#songList"),
   searchInput: document.querySelector("#searchInput"),
-  importForm: document.querySelector("#importForm"),
-  importUrl: document.querySelector("#importUrl"),
   syncStatus: document.querySelector("#syncStatus"),
   syncNowButton: document.querySelector("#syncNowButton"),
   syncSettingsButton: document.querySelector("#syncSettingsButton"),
@@ -109,26 +107,6 @@ function bindEvents() {
   elements.searchInput.addEventListener("input", () => {
     state.query = elements.searchInput.value.trim().toLowerCase();
     renderSongList();
-  });
-
-  elements.importForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const url = elements.importUrl.value.trim();
-    if (!url) return;
-
-    setBusy(elements.importForm, true);
-    try {
-      const song = await importSongFromUrl(url);
-      state.selectedId = song.id;
-      await syncSongToSupabase(song);
-      elements.importUrl.value = "";
-      toast("Imported song");
-      render();
-    } catch (error) {
-      toast(error.message, true);
-    } finally {
-      setBusy(elements.importForm, false);
-    }
   });
 
   elements.sidebarToggle.addEventListener("click", () => {
@@ -262,11 +240,11 @@ function renderSelectedSong() {
   if (!song) {
     stopAutoscroll();
     elements.artistMeta.textContent = "No song selected";
-    elements.songTitle.textContent = "Add or import a song";
+    elements.songTitle.textContent = "Add or clip a song";
     elements.songMeta.replaceChildren();
     elements.viewer.className = "viewer empty-state";
     const emptyMessage = document.createElement("p");
-    emptyMessage.textContent = "Import a tab URL or create a song manually.";
+    emptyMessage.textContent = "Use the clipper or create a song manually.";
     elements.viewer.replaceChildren(emptyMessage);
     return;
   }
@@ -529,20 +507,6 @@ function updateAutoscrollControls() {
   elements.autoscrollSpeed.value = String(state.autoscrollSpeed);
   elements.autoscrollSpeedValue.value = `${state.autoscrollSpeed} px/s`;
   elements.autoscrollControls.classList.toggle("is-active", state.autoscrollActive);
-}
-
-async function importSongFromUrl(url) {
-  if (!hasLocalApi()) {
-    throw new Error("URL import needs the browser extension on the hosted app. Open the tab page, use Songbook Clipper, then sync.");
-  }
-
-  const song = await request("/api/import", {
-    method: "POST",
-    body: JSON.stringify({ url })
-  });
-  await upsertStoredSong(song);
-  state.songs = await getStoredSongs();
-  return song;
 }
 
 function hasLocalApi() {
@@ -1006,7 +970,10 @@ function getSelectedSong() {
 }
 
 function stripTabTags(value) {
-  return value.replace(/\[\/?tab\]/gi, "");
+  return value
+    .replace(/\u00a0/g, " ")
+    .replace(/\t/g, "    ")
+    .replace(/\[\/?tab\]/gi, "");
 }
 
 function removeUgTags(value) {
@@ -1017,28 +984,6 @@ function removeUgTags(value) {
 
 function padEnd(value, length) {
   return value.length >= length ? value : `${value}${" ".repeat(length - value.length)}`;
-}
-
-async function request(url, options = {}) {
-  const response = await fetch(url, {
-    headers: { "content-type": "application/json", ...(options.headers || {}) },
-    ...options
-  });
-
-  if (response.status === 204) return null;
-
-  const payload = await response.json();
-  if (!response.ok) {
-    throw new Error(payload.error || "Request failed.");
-  }
-
-  return payload;
-}
-
-function setBusy(element, isBusy) {
-  element.querySelectorAll("button, input").forEach((control) => {
-    control.disabled = isBusy;
-  });
 }
 
 function toggleAutoscroll() {
