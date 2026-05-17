@@ -1,0 +1,259 @@
+/* ============================================================
+   Songbook theme - DIY ZINE
+   Photocopied punk fanzine: stark black, riso red, cut-and-paste.
+   Hard borders, zero radius, offset shadows, typewriter sheet.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Archivo:wght@400;500;600;700&family=Courier+Prime:wght@400;700&display=swap');
+
+:root {
+  color-scheme: light;
+  --bg: #e7e3d6;
+  --panel: #f6f4ea;
+  --panel-muted: #ddd9c9;
+  --ink: #131313;
+  --muted: #5a584f;
+  --line: #131313;
+  --accent: #131313;
+  --accent-strong: #d8261c;
+  --accent-soft: #ffd6cf;
+  --danger: #b3160c;
+  --shadow: 6px 6px 0 #131313;
+}
+
+body {
+  font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+}
+
+/* Heavy photocopier grain */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  mix-blend-mode: multiply;
+  opacity: 0.13;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* --- Typography --------------------------------------------------------- */
+h1,
+h2,
+.dialog-header h2 {
+  font-family: "Archivo Black", "Arial Black", sans-serif;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  line-height: 0.95;
+}
+
+.brand-row h1 {
+  transform: rotate(-2deg);
+}
+
+.eyebrow {
+  font-family: "Courier Prime", monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+label span,
+.sync-panel span {
+  font-family: "Courier Prime", monospace;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+/* --- Surfaces: hard edges, no radius, stamped shadows ------------------- */
+* {
+  border-radius: 0 !important;
+}
+
+.song-panel {
+  background: var(--panel);
+}
+
+.library-panel {
+  border-right: 3px solid #131313;
+  background: var(--panel);
+}
+
+.song-header {
+  border-bottom: 3px solid #131313;
+  background: var(--panel);
+}
+
+.toolbar {
+  border-bottom: 3px solid #131313;
+  background: var(--panel-muted);
+}
+
+.sync-panel {
+  border: 2px solid #131313;
+  background: var(--panel-muted);
+  box-shadow: 4px 4px 0 #131313;
+}
+
+button {
+  border: 2px solid #131313;
+  background: var(--panel);
+  font-family: "Archivo", sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  box-shadow: 3px 3px 0 #131313;
+  transition: transform 80ms ease, box-shadow 80ms ease, background 80ms ease;
+}
+
+button:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 #131313;
+  background: #131313;
+  color: #f6f4ea;
+}
+
+button:active:not(:disabled) {
+  transform: translate(3px, 3px);
+  box-shadow: 0 0 0 #131313;
+}
+
+input,
+select,
+textarea {
+  border: 2px solid #131313;
+  background: #ffffff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  box-shadow: 3px 3px 0 var(--accent-strong);
+  border-color: #131313;
+}
+
+.import-form button,
+.dialog-actions button[type="submit"],
+.autoscroll-controls button {
+  color: #f6f4ea;
+  background: #131313;
+  border-color: #131313;
+}
+
+.import-form button:hover:not(:disabled),
+.dialog-actions button[type="submit"]:hover:not(:disabled),
+.autoscroll-controls button:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: #131313;
+}
+
+/* --- Song library ------------------------------------------------------- */
+.song-row {
+  border: 2px solid transparent;
+}
+
+.song-row strong {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.song-row:hover {
+  border-color: #131313;
+}
+
+.song-row.active {
+  border: 2px solid #131313;
+  background: var(--accent-strong);
+  color: #f6f4ea;
+  box-shadow: 4px 4px 0 #131313;
+}
+
+.song-row.active span,
+.song-row.active strong {
+  color: #f6f4ea;
+}
+
+.song-meta span {
+  border: 2px solid #131313;
+  background: #ffffff;
+  color: #131313;
+  font-family: "Courier Prime", monospace;
+  font-weight: 700;
+}
+
+/* --- The chord sheet ---------------------------------------------------- */
+.sheet {
+  font-family: "Courier Prime", "Courier New", monospace;
+}
+
+.chord-line,
+.plain-chord-line,
+.pair-desktop-chords,
+.mobile-flow-chord {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.section-label {
+  margin: 26px 0 10px;
+  padding: 5px 12px;
+  background: #131313;
+  color: #f6f4ea;
+  font-family: "Archivo Black", sans-serif;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  transform: rotate(-1.6deg);
+  box-shadow: 3px 3px 0 var(--accent-strong);
+}
+
+/* --- Dialogs, toast, autoscroll ---------------------------------------- */
+dialog {
+  border: 3px solid #131313;
+  background: var(--panel);
+  box-shadow: 10px 10px 0 #131313;
+}
+
+dialog::backdrop {
+  background: rgba(19, 19, 19, 0.6);
+}
+
+.dialog-header {
+  border-bottom: 3px solid #131313;
+}
+
+.toast {
+  border: 2px solid #131313;
+  background: #131313;
+  transform: rotate(-1.5deg) translateY(12px);
+  box-shadow: 4px 4px 0 var(--accent-strong);
+}
+
+.toast.visible {
+  transform: rotate(-1.5deg) translateY(0);
+}
+
+.autoscroll-controls {
+  border: 2px solid #131313;
+  background: #f6f4ea;
+  box-shadow: 5px 5px 0 #131313;
+  backdrop-filter: none;
+}
+
+/* --- Entrance: snap in -------------------------------------------------- */
+@keyframes zineSnap {
+  0% { opacity: 0; transform: translate(-6px, -6px); }
+  100% { opacity: 1; transform: translate(0, 0); }
+}
+
+.library-panel { animation: zineSnap 0.18s steps(3) both; }
+.song-header { animation: zineSnap 0.18s steps(3) 0.09s both; }
+.toolbar { animation: zineSnap 0.18s steps(3) 0.18s both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .library-panel,
+  .song-header,
+  .toolbar { animation: none; }
+}

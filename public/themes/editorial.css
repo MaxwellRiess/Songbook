@@ -1,0 +1,214 @@
+/* ============================================================
+   Songbook theme - EDITORIAL
+   High-end music journal: warm white, generous whitespace,
+   elegant Newsreader serif headlines, refined claret accent.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300;1,6..72,400&family=Spline+Sans:wght@400;500;600&display=swap');
+
+:root {
+  color-scheme: light;
+  --bg: #f3f0e8;
+  --panel: #fbfaf5;
+  --panel-muted: #efebe0;
+  --ink: #1b1a17;
+  --muted: #6c6760;
+  --line: #ddd8ca;
+  --accent: #7c1f2c;
+  --accent-strong: #6a1a26;
+  --accent-soft: #ece1d3;
+  --danger: #9a2a1c;
+  --shadow: 0 20px 46px rgba(28, 22, 16, 0.13);
+}
+
+body {
+  font-family: "Spline Sans", "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+}
+
+/* --- Typography --------------------------------------------------------- */
+h1,
+.dialog-header h2 {
+  font-family: "Newsreader", Georgia, serif;
+  font-weight: 400;
+}
+
+h2 {
+  font-family: "Newsreader", Georgia, serif;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  line-height: 1.06;
+}
+
+.eyebrow {
+  font-family: "Spline Sans", sans-serif;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 12px;
+}
+
+label span,
+.sync-panel span {
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+}
+
+/* --- Surfaces: hairlines, whitespace, restraint ------------------------ */
+.song-panel {
+  background: var(--panel);
+}
+
+.library-panel {
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  padding: 30px 26px;
+}
+
+.song-header {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  padding: 46px 44px;
+}
+
+.toolbar {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  padding: 16px 44px;
+}
+
+.viewer {
+  padding: 40px 44px 110px;
+}
+
+.sync-panel {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-muted);
+}
+
+button,
+input,
+select,
+textarea {
+  border-radius: 4px;
+}
+
+button {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  font-weight: 500;
+  transition: border-color 200ms ease, color 200ms ease;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+input,
+select,
+textarea {
+  background: #ffffff;
+  border-color: var(--line);
+}
+
+.import-form button,
+.dialog-actions button[type="submit"],
+.autoscroll-controls button {
+  color: #fbfaf5;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* --- Song library ------------------------------------------------------- */
+.song-row {
+  border-radius: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.song-row strong {
+  font-family: "Newsreader", serif;
+  font-weight: 400;
+  font-size: 19px;
+}
+
+.song-row.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.song-meta span {
+  border-radius: 999px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}
+
+/* --- The chord sheet ---------------------------------------------------- */
+.chord-line,
+.plain-chord-line,
+.pair-desktop-chords,
+.mobile-flow-chord {
+  color: var(--accent-strong);
+  font-weight: 700;
+}
+
+.section-label {
+  display: block;
+  width: auto;
+  margin: 32px 0 12px;
+  padding: 12px 0 0;
+  border-radius: 0;
+  border-top: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-family: "Spline Sans", sans-serif;
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+/* --- Dialogs, toast, autoscroll ---------------------------------------- */
+dialog {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel);
+}
+
+dialog::backdrop {
+  background: rgba(27, 26, 23, 0.42);
+}
+
+.toast {
+  border-radius: 4px;
+  background: #1b1a17;
+}
+
+.autoscroll-controls {
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: rgba(251, 250, 245, 0.97);
+}
+
+/* --- Entrance ----------------------------------------------------------- */
+@keyframes editorialRise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.library-panel { animation: editorialRise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.song-header { animation: editorialRise 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both; }
+.toolbar { animation: editorialRise 0.7s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .library-panel,
+  .song-header,
+  .toolbar { animation: none; }
+}

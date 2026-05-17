@@ -35,6 +35,7 @@ const elements = {
   copyButton: document.querySelector("#copyButton"),
   transposeSelect: document.querySelector("#transposeSelect"),
   fontSizeInput: document.querySelector("#fontSizeInput"),
+  themeSelect: document.querySelector("#themeSelect"),
   autoscrollControls: document.querySelector("#autoscrollControls"),
   autoscrollToggle: document.querySelector("#autoscrollToggle"),
   autoscrollSpeed: document.querySelector("#autoscrollSpeed"),
@@ -64,6 +65,8 @@ const elements = {
 
 const SUPABASE_CONFIG_KEY = "songbook.supabase.config";
 const SIDEBAR_COLLAPSED_KEY = "songbook.sidebar.collapsed";
+const THEME_KEY = "songbook.theme";
+const THEMES = ["vintage", "zine", "analog", "stage", "editorial"];
 const DB_NAME = "songbook";
 const DB_VERSION = 1;
 const SONG_STORE = "songs";
@@ -86,6 +89,7 @@ if (clippedSong) {
   await syncSongToSupabase(clippedSong);
 }
 restoreSidebarState();
+restoreTheme();
 bindEvents();
 render();
 if (clippedSong) toast("Clipped song imported");
@@ -111,6 +115,10 @@ function bindEvents() {
 
   elements.sidebarToggle.addEventListener("click", () => {
     setSidebarCollapsed(!elements.appShell.classList.contains("sidebar-collapsed"));
+  });
+
+  elements.themeSelect.addEventListener("change", () => {
+    applyTheme(elements.themeSelect.value);
   });
 
   elements.newSongButton.addEventListener("click", () => openSongDialog());
@@ -1026,6 +1034,43 @@ function restoreSidebarState() {
     collapsed = false;
   }
   setSidebarCollapsed(collapsed);
+}
+
+function applyTheme(name) {
+  const theme = THEMES.includes(name) ? name : "";
+  let link = document.querySelector("#themeStylesheet");
+  if (!theme) {
+    if (link) link.remove();
+  } else {
+    if (!link) {
+      link = document.createElement("link");
+      link.id = "themeStylesheet";
+      link.rel = "stylesheet";
+      document.head.append(link);
+    }
+    link.href = `themes/${theme}.css`;
+  }
+  try {
+    if (theme) {
+      localStorage.setItem(THEME_KEY, theme);
+    } else {
+      localStorage.removeItem(THEME_KEY);
+    }
+  } catch (error) {
+    // localStorage may be unavailable; the theme still applies for this session.
+  }
+}
+
+function restoreTheme() {
+  let theme = "";
+  try {
+    theme = localStorage.getItem(THEME_KEY) || "";
+  } catch (error) {
+    theme = "";
+  }
+  if (!THEMES.includes(theme)) theme = "";
+  elements.themeSelect.value = theme;
+  applyTheme(theme);
 }
 
 function toast(message, isError = false) {
