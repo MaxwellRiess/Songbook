@@ -8,6 +8,22 @@
     <link rel="manifest" href="manifest.webmanifest">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="styles.css">
+    <script>
+      /* Trial theme: apply a saved look before first paint to avoid a flash.
+         Remove this block (and the themes/ folder) to drop the feature. */
+      (function () {
+        try {
+          var t = localStorage.getItem("songbook.theme");
+          if (t && /^[a-z]+$/.test(t)) {
+            var link = document.createElement("link");
+            link.id = "themeStylesheet";
+            link.rel = "stylesheet";
+            link.href = "themes/" + t + ".css";
+            document.head.appendChild(link);
+          }
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <main id="appShell" class="app-shell">
@@ -79,6 +95,17 @@
           <label>
             <span>Size</span>
             <input id="fontSizeInput" type="range" min="13" max="24" value="16">
+          </label>
+          <label>
+            <span>Theme</span>
+            <select id="themeSelect">
+              <option value="">Original</option>
+              <option value="vintage">Letterpress Hymnal</option>
+              <option value="zine">DIY Zine</option>
+              <option value="analog">Analog Folk</option>
+              <option value="stage">Stage Mode</option>
+              <option value="editorial">Editorial</option>
+            </select>
           </label>
           <button id="copyButton" type="button" disabled>Copy</button>
         </div>

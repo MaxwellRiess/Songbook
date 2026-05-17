@@ -1,0 +1,201 @@
+/* ============================================================
+   Songbook theme - STAGE MODE
+   Dark, low-light performance view. Warm near-black ground,
+   amber "stage light" chords with a soft glow, big legible type.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  color-scheme: dark;
+  --bg: #100f0d;
+  --panel: #1a1916;
+  --panel-muted: #242219;
+  --ink: #f1ead8;
+  --muted: #968b73;
+  --line: #322f25;
+  --accent: #f0a72e;
+  --accent-strong: #ffbb3d;
+  --accent-soft: #2c2412;
+  --danger: #ec6a4f;
+  --shadow: 0 26px 60px rgba(0, 0, 0, 0.72);
+}
+
+body {
+  font-family: "Bricolage Grotesque", "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+}
+
+/* --- Typography --------------------------------------------------------- */
+h1,
+h2,
+.dialog-header h2 {
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.eyebrow {
+  color: var(--accent);
+  letter-spacing: 0.14em;
+}
+
+/* --- Surfaces ----------------------------------------------------------- */
+.song-panel {
+  /* Ambient stage-light pool behind the chord sheet */
+  background:
+    radial-gradient(72% 56% at 50% 20%, rgba(240, 167, 46, 0.12), transparent 72%),
+    var(--bg);
+}
+
+.library-panel {
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.song-header {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.toolbar {
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.sync-panel {
+  border: 1px solid var(--line);
+  background: var(--panel-muted);
+}
+
+button {
+  border: 1px solid var(--line);
+  background: var(--panel-muted);
+  color: var(--ink);
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+input,
+select,
+textarea {
+  background: var(--panel-muted);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(240, 167, 46, 0.22);
+}
+
+.import-form button,
+.dialog-actions button[type="submit"],
+.autoscroll-controls button {
+  color: #181308;
+  background: var(--accent);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.import-form button:hover:not(:disabled),
+.dialog-actions button[type="submit"]:hover:not(:disabled),
+.autoscroll-controls button:hover:not(:disabled) {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #181308;
+}
+
+/* --- Song library ------------------------------------------------------- */
+.song-row.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.song-meta span {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+/* --- The chord sheet: the star of the show ----------------------------- */
+.sheet {
+  font-family: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  line-height: 1.55;
+}
+
+.lyric-line,
+.mobile-flow-lyric,
+.pair-desktop-lyrics {
+  color: var(--ink);
+}
+
+.chord-line,
+.plain-chord-line,
+.pair-desktop-chords,
+.mobile-flow-chord {
+  color: var(--accent-strong);
+  font-weight: 700;
+  text-shadow: 0 0 16px rgba(255, 187, 61, 0.45);
+}
+
+.section-label {
+  margin: 26px 0 12px;
+  padding: 4px 0 4px 12px;
+  border-radius: 0;
+  border-left: 3px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font-family: "Bricolage Grotesque", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 13px;
+}
+
+/* --- Dialogs, toast, autoscroll ---------------------------------------- */
+dialog {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+dialog::backdrop {
+  background: rgba(0, 0, 0, 0.74);
+}
+
+.toast {
+  background: var(--panel-muted);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+
+.autoscroll-controls {
+  border: 1px solid var(--line);
+  background: rgba(26, 25, 22, 0.94);
+}
+
+.autoscroll-controls.is-active button {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+}
+
+/* --- Entrance ----------------------------------------------------------- */
+@keyframes stageGlow {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.library-panel { animation: stageGlow 0.5s ease both; }
+.song-header { animation: stageGlow 0.5s ease 0.08s both; }
+.viewer { animation: stageGlow 0.6s ease 0.16s both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .library-panel,
+  .song-header,
+  .viewer { animation: none; }
+}
