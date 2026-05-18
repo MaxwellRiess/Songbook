@@ -220,6 +220,7 @@ textarea:focus {
   gap: 8px;
   flex: 1;
   min-height: 0;
+  align-content: start;
   overflow: auto;
   padding-right: 4px;
 }
@@ -334,21 +335,25 @@ textarea:focus {
   width: fit-content;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel-muted);
   overflow: hidden;
 }
 
 .stepper-button {
-  min-width: 38px;
-  min-height: 38px;
+  min-width: 40px;
+  min-height: 40px;
   padding: 0;
   border: 0;
   border-radius: 0;
   font-size: 20px;
   background: var(--panel-muted);
+  -webkit-tap-highlight-color: transparent;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
-.stepper-button:hover:not(:disabled) {
+.stepper-button:hover:not(:disabled),
+.stepper-button:active:not(:disabled) {
   border-color: transparent;
   background: var(--accent-soft);
 }
@@ -361,6 +366,8 @@ textarea:focus {
   padding: 0 8px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--panel);
 }
 
 .viewer {
