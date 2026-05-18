@@ -5,7 +5,7 @@ const state = {
   transpose: 0,
   fontSize: 16,
   autoscrollActive: false,
-  autoscrollSpeed: 45,
+  autoscrollSpeed: 32,
   autoscrollFrameId: null,
   autoscrollLastTime: null,
   autoscrollRemainder: 0,
@@ -33,9 +33,14 @@ const elements = {
   editButton: document.querySelector("#editButton"),
   deleteButton: document.querySelector("#deleteButton"),
   copyButton: document.querySelector("#copyButton"),
-  transposeSelect: document.querySelector("#transposeSelect"),
-  fontSizeInput: document.querySelector("#fontSizeInput"),
+  transposeValue: document.querySelector("#transposeValue"),
+  transposeDown: document.querySelector("#transposeDown"),
+  transposeUp: document.querySelector("#transposeUp"),
+  fontSizeValue: document.querySelector("#fontSizeValue"),
+  fontSizeDown: document.querySelector("#fontSizeDown"),
+  fontSizeUp: document.querySelector("#fontSizeUp"),
   themeSelect: document.querySelector("#themeSelect"),
+  sidebarScrim: document.querySelector("#sidebarScrim"),
   autoscrollControls: document.querySelector("#autoscrollControls"),
   autoscrollToggle: document.querySelector("#autoscrollToggle"),
   autoscrollSpeed: document.querySelector("#autoscrollSpeed"),
@@ -67,6 +72,14 @@ const SUPABASE_CONFIG_KEY = "songbook.supabase.config";
 const SIDEBAR_COLLAPSED_KEY = "songbook.sidebar.collapsed";
 const THEME_KEY = "songbook.theme";
 const THEMES = ["vintage", "zine", "analog", "stage", "editorial"];
+const AUTOSCROLL_MIN_SPEED = 8;
+const AUTOSCROLL_MAX_SPEED = 100;
+const AUTOSCROLL_CURVE = 2;
+const FONT_SIZE_MIN = 13;
+const FONT_SIZE_MAX = 24;
+const TRANSPOSE_MIN = -6;
+const TRANSPOSE_MAX = 6;
+const HIDDEN_META_TAGS = new Set(["clip", "clipped", "ultimate-guitar", "ultimate guitar"]);
 const DB_NAME = "songbook";
 const DB_VERSION = 1;
 const SONG_STORE = "songs";
@@ -91,6 +104,9 @@ if (clippedSong) {
 restoreSidebarState();
 restoreTheme();
 bindEvents();
+updateTransposeDisplay();
+updateFontSizeDisplay();
+updateAutoscrollControls();
 render();
 if (clippedSong) toast("Clipped song imported");
 registerServiceWorker();
@@ -117,6 +133,8 @@ function bindEvents() {
     setSidebarCollapsed(!elements.appShell.classList.contains("sidebar-collapsed"));
   });
 
+  elements.sidebarScrim.addEventListener("click", () => setSidebarCollapsed(true));
+
   elements.themeSelect.addEventListener("change", () => {
     applyTheme(elements.themeSelect.value);
   });
@@ -133,15 +151,11 @@ function bindEvents() {
   elements.closeDialogButton.addEventListener("click", () => elements.dialog.close());
   elements.cancelButton.addEventListener("click", () => elements.dialog.close());
 
-  elements.transposeSelect.addEventListener("change", () => {
-    state.transpose = Number(elements.transposeSelect.value);
-    renderSelectedSong();
-  });
+  elements.transposeDown.addEventListener("click", () => setTranspose(state.transpose - 1));
+  elements.transposeUp.addEventListener("click", () => setTranspose(state.transpose + 1));
 
-  elements.fontSizeInput.addEventListener("input", () => {
-    state.fontSize = Number(elements.fontSizeInput.value);
-    elements.viewer.style.setProperty("--sheet-font-size", `${state.fontSize}px`);
-  });
+  elements.fontSizeDown.addEventListener("click", () => setFontSize(state.fontSize - 1));
+  elements.fontSizeUp.addEventListener("click", () => setFontSize(state.fontSize + 1));
 
   elements.autoscrollToggle.addEventListener("click", () => {
     toggleAutoscroll();
@@ -158,8 +172,8 @@ function bindEvents() {
   });
 
   elements.autoscrollSpeed.addEventListener("input", () => {
-    state.autoscrollSpeed = Number(elements.autoscrollSpeed.value);
-    updateAutoscrollControls();
+    state.autoscrollSpeed = autoscrollSpeedFromSlider(Number(elements.autoscrollSpeed.value));
+    elements.autoscrollSpeedValue.value = `${state.autoscrollSpeed} px/s`;
   });
 
   elements.viewer.addEventListener("scroll", () => {
@@ -219,8 +233,9 @@ function renderSongList() {
     button.addEventListener("click", () => {
       state.selectedId = song.id;
       state.transpose = 0;
-      elements.transposeSelect.value = "0";
+      updateTransposeDisplay();
       stopAutoscroll();
+      if (isMobileViewport()) setSidebarCollapsed(true);
       render();
     });
 
@@ -512,9 +527,55 @@ function isAutoscrollAtBottom() {
 function updateAutoscrollControls() {
   elements.autoscrollToggle.textContent = state.autoscrollActive ? "Stop" : "Start";
   elements.autoscrollToggle.setAttribute("aria-pressed", String(state.autoscrollActive));
-  elements.autoscrollSpeed.value = String(state.autoscrollSpeed);
+  elements.autoscrollSpeed.value = String(autoscrollSliderFromSpeed(state.autoscrollSpeed));
   elements.autoscrollSpeedValue.value = `${state.autoscrollSpeed} px/s`;
   elements.autoscrollControls.classList.toggle("is-active", state.autoscrollActive);
+}
+
+// Slider position (0-100) maps to speed on an eased curve so the slow end,
+// where reading speeds live, gets most of the travel; the fast end caps at 100 px/s.
+function autoscrollSpeedFromSlider(position) {
+  const t = Math.min(Math.max(position / 100, 0), 1);
+  const range = AUTOSCROLL_MAX_SPEED - AUTOSCROLL_MIN_SPEED;
+  return Math.round(AUTOSCROLL_MIN_SPEED + range * Math.pow(t, AUTOSCROLL_CURVE));
+}
+
+function autoscrollSliderFromSpeed(speed) {
+  const clamped = Math.min(Math.max(speed, AUTOSCROLL_MIN_SPEED), AUTOSCROLL_MAX_SPEED);
+  const t = (clamped - AUTOSCROLL_MIN_SPEED) / (AUTOSCROLL_MAX_SPEED - AUTOSCROLL_MIN_SPEED);
+  return Math.round(Math.pow(t, 1 / AUTOSCROLL_CURVE) * 100);
+}
+
+function setTranspose(value) {
+  const clamped = Math.min(Math.max(value, TRANSPOSE_MIN), TRANSPOSE_MAX);
+  if (clamped === state.transpose) return;
+  state.transpose = clamped;
+  updateTransposeDisplay();
+  renderSelectedSong();
+}
+
+function updateTransposeDisplay() {
+  elements.transposeValue.textContent = state.transpose > 0 ? `+${state.transpose}` : String(state.transpose);
+  elements.transposeDown.disabled = state.transpose <= TRANSPOSE_MIN;
+  elements.transposeUp.disabled = state.transpose >= TRANSPOSE_MAX;
+}
+
+function setFontSize(value) {
+  const clamped = Math.min(Math.max(value, FONT_SIZE_MIN), FONT_SIZE_MAX);
+  if (clamped === state.fontSize) return;
+  state.fontSize = clamped;
+  updateFontSizeDisplay();
+  elements.viewer.style.setProperty("--sheet-font-size", `${state.fontSize}px`);
+}
+
+function updateFontSizeDisplay() {
+  elements.fontSizeValue.textContent = String(state.fontSize);
+  elements.fontSizeDown.disabled = state.fontSize <= FONT_SIZE_MIN;
+  elements.fontSizeUp.disabled = state.fontSize >= FONT_SIZE_MAX;
+}
+
+function isMobileViewport() {
+  return window.matchMedia("(max-width: 820px)").matches;
 }
 
 function hasLocalApi() {
@@ -884,11 +945,14 @@ function songFromSupabaseRow(row) {
 }
 
 function buildMetaPills(song) {
+  const visibleTags = (song.tags || []).filter(
+    (tag) => !HIDDEN_META_TAGS.has(String(tag).trim().toLowerCase())
+  );
   const values = [
     song.key && `Key ${song.key}`,
     song.capo && `Capo ${song.capo}`,
     song.tuning,
-    ...(song.tags || [])
+    ...visibleTags
   ].filter(Boolean);
 
   return values.map((value) => {
@@ -1033,6 +1097,8 @@ function restoreSidebarState() {
   } catch (error) {
     collapsed = false;
   }
+  // On mobile the library is a slide-in overlay; start it dismissed so the song shows first.
+  if (isMobileViewport()) collapsed = true;
   setSidebarCollapsed(collapsed);
 }
 
