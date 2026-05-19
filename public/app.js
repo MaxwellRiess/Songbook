@@ -171,6 +171,16 @@ function bindEvents() {
     toggleAutoscroll();
   });
 
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (isTypingTarget(event.target)) return;
+    if (elements.dialog?.open || elements.syncDialog?.open) return;
+    if (!getSelectedSong()) return;
+    event.preventDefault();
+    nudgeAutoscrollSpeed(event.key === "ArrowRight" ? 1 : -1);
+  });
+
   elements.autoscrollSpeed.addEventListener("input", () => {
     state.autoscrollSpeed = autoscrollSpeedFromSlider(Number(elements.autoscrollSpeed.value));
     elements.autoscrollSpeedValue.value = `${state.autoscrollSpeed} px/s`;
@@ -1064,6 +1074,21 @@ function toggleAutoscroll() {
   } else {
     startAutoscroll();
   }
+}
+
+// Move the speed slider by a few steps (left/right arrow keys), mirroring
+// what the slider's own "input" handler does.
+function nudgeAutoscrollSpeed(direction) {
+  const slider = elements.autoscrollSpeed;
+  const step = 5;
+  const min = Number(slider.min) || 0;
+  const max = Number(slider.max) || 100;
+  const current = Number(slider.value);
+  const next = Math.min(max, Math.max(min, current + direction * step));
+  if (next === current) return;
+  slider.value = String(next);
+  state.autoscrollSpeed = autoscrollSpeedFromSlider(next);
+  elements.autoscrollSpeedValue.value = `${state.autoscrollSpeed} px/s`;
 }
 
 function isTypingTarget(target) {
