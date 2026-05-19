@@ -1,9 +1,10 @@
-const CACHE_NAME = "songbook-v3";
+const CACHE_NAME = "songbook-v4";
 const APP_SHELL = [
   "./",
   "index.html",
   "styles.css",
   "app.js",
+  "chord-utils.js",
   "song-sync.js",
   "manifest.webmanifest",
   "icon.svg"
