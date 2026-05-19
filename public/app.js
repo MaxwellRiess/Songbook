@@ -1,3 +1,5 @@
+import { mergeSongs } from "./song-sync.js";
+
 const state = {
   songs: [],
   selectedId: null,
@@ -65,8 +67,9 @@ const elements = {
 const SUPABASE_CONFIG_KEY = "songbook.supabase.config";
 const SIDEBAR_COLLAPSED_KEY = "songbook.sidebar.collapsed";
 const DB_NAME = "songbook";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const SONG_STORE = "songs";
+const DELETED_SONG_STORE = "deletedSongs";
 
 const NOTES_SHARP = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const FLAT_TO_SHARP = {
@@ -80,15 +83,23 @@ const FLAT_TO_SHARP = {
 await initializeSupabase();
 await loadSongs();
 const clippedSong = await consumeClipImportFromLocation();
+let clippedSongSyncFailed = false;
 if (clippedSong) {
   state.songs = await getStoredSongs();
   state.selectedId = clippedSong.id;
-  await syncSongToSupabase(clippedSong);
+  try {
+    await syncSongToSupabase(clippedSong);
+  } catch (error) {
+    clippedSongSyncFailed = true;
+    updateSyncStatus(error.message || "Sync failed");
+  }
 }
 restoreSidebarState();
 bindEvents();
 render();
-if (clippedSong) toast("Clipped song imported");
+if (clippedSong) {
+  toast(clippedSongSyncFailed ? "Clipped song imported locally. Sync failed." : "Clipped song imported", clippedSongSyncFailed);
+}
 registerServiceWorker();
 
 async function loadSongs() {
@@ -180,9 +191,15 @@ function bindEvents() {
     const song = normalizeSong(event.detail || {});
     state.songs = await getStoredSongs();
     state.selectedId = song.id;
-    await syncSongToSupabase(song);
+    let syncFailed = false;
+    try {
+      await syncSongToSupabase(song);
+    } catch (error) {
+      syncFailed = true;
+      updateSyncStatus(error.message || "Sync failed");
+    }
     render();
-    toast("Clipped song imported");
+    toast(syncFailed ? "Clipped song imported locally. Sync failed." : "Clipped song imported", syncFailed);
   });
 }
 
@@ -561,6 +578,36 @@ async function deleteStoredSong(songId) {
   });
 }
 
+async function getDeletedSongs() {
+  const db = await openSongbookDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(DELETED_SONG_STORE, "readonly");
+    const request = transaction.objectStore(DELETED_SONG_STORE).getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function upsertDeletedSong(songId, deletedAt = new Date().toISOString()) {
+  const db = await openSongbookDb();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(DELETED_SONG_STORE, "readwrite");
+    transaction.objectStore(DELETED_SONG_STORE).put({ id: songId, deletedAt });
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+async function removeDeletedSong(songId) {
+  const db = await openSongbookDb();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(DELETED_SONG_STORE, "readwrite");
+    transaction.objectStore(DELETED_SONG_STORE).delete(songId);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
 function openSongbookDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -570,6 +617,10 @@ function openSongbookDb() {
         const store = db.createObjectStore(SONG_STORE, { keyPath: "id" });
         store.createIndex("updatedAt", "updatedAt");
         store.createIndex("sourceUrl", "sourceUrl");
+      }
+      if (!db.objectStoreNames.contains(DELETED_SONG_STORE)) {
+        const store = db.createObjectStore(DELETED_SONG_STORE, { keyPath: "id" });
+        store.createIndex("deletedAt", "deletedAt");
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -756,6 +807,8 @@ async function syncWithSupabase() {
   updateSyncStatus("Syncing");
 
   try {
+    await flushPendingDeletesToSupabase();
+    const deletedSongs = await getDeletedSongs();
     const { data, error } = await state.supabaseClient
       .from("songs")
       .select("*")
@@ -763,7 +816,7 @@ async function syncWithSupabase() {
     if (error) throw error;
 
     const remoteSongs = (data || []).map(songFromSupabaseRow);
-    const mergedSongs = mergeSongs(state.songs, remoteSongs);
+    const mergedSongs = mergeSongs(state.songs, remoteSongs, deletedSongs);
     await saveLocalSongs(mergedSongs);
     state.songs = mergedSongs;
     state.selectedId = mergedSongs.some((song) => song.id === state.selectedId) ? state.selectedId : mergedSongs[0]?.id || null;
@@ -788,21 +841,26 @@ async function syncWithSupabase() {
 async function syncSongToSupabase(song) {
   if (!canUseSupabase()) return;
   const { error } = await state.supabaseClient.from("songs").upsert(songToSupabaseRow(song), { onConflict: "id" });
-  if (error) {
-    updateSyncStatus(error.message);
-    toast(error.message, true);
-    return;
-  }
+  if (error) throw error;
   updateSyncStatus("Synced");
 }
 
 async function deleteSongFromSupabase(songId) {
-  if (!canUseSupabase()) return;
-  const { error } = await state.supabaseClient.from("songs").delete().eq("id", songId);
-  if (error) {
-    updateSyncStatus(error.message);
-    toast(error.message, true);
-  }
+  await deleteSongsFromSupabase([songId]);
+}
+
+async function deleteSongsFromSupabase(songIds) {
+  if (!canUseSupabase() || !songIds.length) return;
+  const { error } = await state.supabaseClient.from("songs").delete().in("id", songIds);
+  if (error) throw error;
+}
+
+async function flushPendingDeletesToSupabase() {
+  const deletedSongs = await getDeletedSongs();
+  if (!deletedSongs.length) return;
+
+  await deleteSongsFromSupabase(deletedSongs.map((song) => song.id));
+  await Promise.all(deletedSongs.map((song) => removeDeletedSong(song.id)));
 }
 
 function canUseSupabase() {
@@ -829,17 +887,6 @@ function updateSyncStatus(message = "") {
 
 async function saveLocalSongs(songs) {
   await saveStoredSongs(songs);
-}
-
-function mergeSongs(localSongs, remoteSongs) {
-  const byId = new Map();
-  for (const song of [...remoteSongs, ...localSongs]) {
-    const existing = byId.get(song.id);
-    if (!existing || new Date(song.updatedAt) > new Date(existing.updatedAt)) {
-      byId.set(song.id, song);
-    }
-  }
-  return [...byId.values()].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 }
 
 function songToSupabaseRow(song) {
@@ -905,25 +952,42 @@ function openSongDialog(song = null) {
 }
 
 async function saveSongFromDialog() {
-  const payload = {
-    id: state.editingId || undefined,
-    title: elements.titleInput.value,
-    artist: elements.artistInput.value,
-    key: elements.keyInput.value,
-    capo: elements.capoInput.value,
-    tuning: elements.tuningInput.value,
-    tags: elements.tagsInput.value.split(",").map((tag) => tag.trim()).filter(Boolean),
-    rawContent: elements.contentInput.value
-  };
+  try {
+    const payload = {
+      id: state.editingId || undefined,
+      title: elements.titleInput.value,
+      artist: elements.artistInput.value,
+      key: elements.keyInput.value,
+      capo: elements.capoInput.value,
+      tuning: elements.tuningInput.value,
+      tags: elements.tagsInput.value.split(",").map((tag) => tag.trim()).filter(Boolean),
+      rawContent: elements.contentInput.value
+    };
 
-  const existing = state.editingId ? getSelectedSong() : null;
-  const song = await upsertStoredSong(normalizeSong({ ...existing, ...payload, updatedAt: new Date().toISOString() }));
-  state.songs = await getStoredSongs();
-  state.selectedId = song.id;
-  await syncSongToSupabase(song);
-  elements.dialog.close();
-  toast("Saved song");
-  render();
+    const existing = state.editingId ? state.songs.find((song) => song.id === state.editingId) : null;
+    if (state.editingId && !existing) {
+      toast("Could not find the song being edited.", true);
+      return;
+    }
+
+    const song = await upsertStoredSong(normalizeSong({ ...existing, ...payload, updatedAt: new Date().toISOString() }));
+    state.songs = await getStoredSongs();
+    state.selectedId = song.id;
+
+    let syncFailed = false;
+    try {
+      await syncSongToSupabase(song);
+    } catch (error) {
+      syncFailed = true;
+      updateSyncStatus(error.message || "Sync failed");
+    }
+
+    elements.dialog.close();
+    toast(syncFailed ? "Saved locally. Sync failed." : "Saved song", syncFailed);
+    render();
+  } catch (error) {
+    toast(error.message || "Could not save song.", true);
+  }
 }
 
 async function deleteSelectedSong() {
@@ -933,12 +997,32 @@ async function deleteSelectedSong() {
   if (!confirmed) return;
 
   stopAutoscroll();
-  await deleteStoredSong(song.id);
-  await deleteSongFromSupabase(song.id);
-  state.songs = await getStoredSongs();
-  state.selectedId = state.songs[0]?.id || null;
-  toast("Deleted song");
-  render();
+
+  try {
+    await upsertDeletedSong(song.id);
+    await deleteStoredSong(song.id);
+    state.songs = await getStoredSongs();
+    state.selectedId = state.songs[0]?.id || null;
+    render();
+  } catch (error) {
+    toast(error.message || "Could not delete song.", true);
+    return;
+  }
+
+  if (!canUseSupabase()) {
+    toast("Deleted song");
+    return;
+  }
+
+  try {
+    await deleteSongFromSupabase(song.id);
+    await removeDeletedSong(song.id);
+    updateSyncStatus("Synced");
+    toast("Deleted song");
+  } catch (error) {
+    updateSyncStatus(error.message || "Sync failed");
+    toast("Deleted locally. Remote delete will retry on next sync.", true);
+  }
 }
 
 async function copySelectedSong() {
