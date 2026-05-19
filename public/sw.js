@@ -1,13 +1,22 @@
-const CACHE_NAME = "songbook-v4";
+const CACHE_NAME = "songbook-v5";
 const APP_SHELL = [
   "./",
   "index.html",
   "styles.css",
   "app.js",
+  "backup.js",
   "chord-utils.js",
+  "db.js",
+  "song-model.js",
+  "song-renderer.js",
   "song-sync.js",
   "manifest.webmanifest",
-  "icon.svg"
+  "icon.svg",
+  "themes/analog.css",
+  "themes/editorial.css",
+  "themes/stage.css",
+  "themes/vintage.css",
+  "themes/zine.css"
 ];
 
 self.addEventListener("install", (event) => {

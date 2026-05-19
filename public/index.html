@@ -13,7 +13,7 @@
          Remove this block (and the themes/ folder) to drop the feature. */
       (function () {
         try {
-          var t = localStorage.getItem("songbook.theme");
+          var t = localStorage.getItem("songbook.theme") || "stage";
           if (t && /^[a-z]+$/.test(t)) {
             var link = document.createElement("link");
             link.id = "themeStylesheet";
@@ -38,6 +38,18 @@
           </button>
         </div>
 
+        <label class="menu-theme">
+          <span>Theme</span>
+          <select id="themeSelect">
+            <option value="">Original</option>
+            <option value="vintage">Letterpress Hymnal</option>
+            <option value="zine">DIY Zine</option>
+            <option value="analog">Analog Folk</option>
+            <option value="stage" selected>Stage Mode</option>
+            <option value="editorial">Editorial</option>
+          </select>
+        </label>
+
         <label class="search-box">
           <span>Search</span>
           <input id="searchInput" type="search" placeholder="Title, artist, lyrics, chord">
@@ -47,26 +59,20 @@
           <div>
             <span>Sync</span>
             <strong id="syncStatus">Local only</strong>
+            <p id="syncDetails" class="sync-details">Changes stay on this device.</p>
           </div>
           <div class="sync-actions">
             <button id="syncNowButton" type="button" disabled>Sync</button>
             <button id="syncSettingsButton" type="button">Settings</button>
           </div>
+          <div class="backup-actions">
+            <button id="exportBackupButton" type="button">Export</button>
+            <button id="importBackupButton" type="button">Import</button>
+            <input id="backupFileInput" type="file" accept="application/json,.json" hidden>
+          </div>
         </div>
 
         <div id="songList" class="song-list" role="list"></div>
-
-        <label class="menu-theme">
-          <span>Theme</span>
-          <select id="themeSelect">
-            <option value="">Original</option>
-            <option value="vintage">Letterpress Hymnal</option>
-            <option value="zine">DIY Zine</option>
-            <option value="analog">Analog Folk</option>
-            <option value="stage">Stage Mode</option>
-            <option value="editorial">Editorial</option>
-          </select>
-        </label>
       </aside>
 
       <div id="sidebarScrim" class="sidebar-scrim" aria-hidden="true"></div>
