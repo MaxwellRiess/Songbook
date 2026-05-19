@@ -37,6 +37,10 @@ async function clipCurrentTab() {
     }
 
     elements.pageStatus.textContent = "Reading page";
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: ["chord-utils-content.js"]
+    });
     const [result] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: extractSongFromLoadedPage
@@ -66,25 +70,6 @@ async function saveSong(song) {
   const appUrl = normalizeAppUrl(elements.appUrlInput.value);
   elements.appUrlInput.value = appUrl;
   chrome.storage?.local?.set({ appUrl });
-
-  if (isLocalAppUrl(appUrl)) {
-    try {
-      const response = await fetch(`${appUrl}/api/songs`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(song)
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error || "The local app rejected the song.");
-      }
-
-      return { song: payload, openedApp: false };
-    } catch {
-      // Fall through to the static PWA import flow.
-    }
-  }
 
   const { tab: appTab, shouldClose } = await getSongbookTab(appUrl);
   await waitForTabComplete(appTab.id);
@@ -117,15 +102,6 @@ function setMessage(message, isError = false) {
 
 function normalizeAppUrl(value) {
   return (value || DEFAULT_APP_URL).trim().replace(/\/+$/, "");
-}
-
-function isLocalAppUrl(value) {
-  try {
-    const url = new URL(value);
-    return ["localhost", "127.0.0.1"].includes(url.hostname);
-  } catch {
-    return false;
-  }
 }
 
 async function getSongbookTab(appUrl) {
@@ -234,6 +210,10 @@ function isUltimateGuitarUrl(value) {
 
 function extractSongFromLoadedPage() {
   try {
+    if (!globalThis.songbookChordUtils?.isPlainChordLine) {
+      throw new Error("Songbook chord parser did not load.");
+    }
+
     const pageData = extractUltimateGuitarDataFromDom();
     const tabView = findTabView(pageData);
     const content = getNested(tabView, ["wiki_tab", "content"]) || getNested(tabView, ["tab", "content"]) || findChordContent(pageData);
@@ -358,6 +338,7 @@ function extractSongFromLoadedPage() {
   }
 
   function chordSheetScore(text) {
+    const { isPlainChordLine } = globalThis.songbookChordUtils;
     const lines = String(text || "").split("\n").map((line) => line.trimEnd());
     const bracketChordCount = (text.match(/\[ch\][\s\S]*?\[\/ch\]/gi) || []).length;
     const sectionCount = lines.filter((line) => /^\s*\[(?:Intro|Verse|Chorus|Bridge|Outro|Pre-Chorus|Interlude|Solo|Instrumental)[^\]]*\]\s*$/i.test(line)).length;
@@ -393,26 +374,6 @@ function extractSongFromLoadedPage() {
     }
 
     return bestScore >= 8 ? best : "";
-  }
-
-  function isPlainChordLine(line) {
-    const tokens = String(line).trim().split(/\s+/).filter(Boolean);
-    if (!tokens.length) return false;
-
-    const musicalTokens = tokens.filter((token) => !isBarToken(token));
-    if (!musicalTokens.length) return false;
-
-    const chordTokens = musicalTokens.filter(isChordToken);
-    return chordTokens.length === musicalTokens.length && (chordTokens.length > 1 || line.trim().length <= 8);
-  }
-
-  function isChordToken(token) {
-    const normalized = token.replace(/[.,;:]+$/g, "").replace(/^\((.*)\)$/, "$1");
-    return /^[A-G](?:#|b)?(?:(?:m|maj|min|dim|aug|sus|add|M|no)?[0-9#b+\-()]*)*(?:\/[A-G](?:#|b)?)?$/.test(normalized);
-  }
-
-  function isBarToken(token) {
-    return /^[|:]+$/.test(token) || /^\(?x\d+\)?$/i.test(token) || /^\(?\d+x\)?$/i.test(token) || /^N\.?C\.?$/i.test(token);
   }
 
   function normalizeContent(value) {

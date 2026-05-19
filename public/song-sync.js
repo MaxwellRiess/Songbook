@@ -14,3 +14,38 @@ export function mergeSongs(localSongs, remoteSongs, deletedSongs = []) {
   return [...byId.values()].sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 }
 
+export function detectSongConflicts(localSongs, remoteSongs, deletedSongs = []) {
+  const deletedIds = new Set(deletedSongs.map((song) => song.id).filter(Boolean));
+  const remoteById = new Map(remoteSongs.map((song) => [song.id, song]));
+  const conflicts = [];
+
+  for (const local of localSongs) {
+    if (deletedIds.has(local.id)) continue;
+    const remote = remoteById.get(local.id);
+    if (!remote) continue;
+    if (!songsDiffer(local, remote)) continue;
+
+    conflicts.push({
+      id: local.id,
+      title: newerSong(local, remote).title,
+      localUpdatedAt: local.updatedAt,
+      remoteUpdatedAt: remote.updatedAt,
+      winningSource: new Date(local.updatedAt) >= new Date(remote.updatedAt) ? "local" : "remote"
+    });
+  }
+
+  return conflicts;
+}
+
+function songsDiffer(a, b) {
+  return ["title", "artist", "key", "capo", "tuning", "sourceUrl", "rawContent"].some((field) => String(a[field] || "") !== String(b[field] || "")) ||
+    tagsKey(a.tags) !== tagsKey(b.tags);
+}
+
+function tagsKey(tags) {
+  return Array.isArray(tags) ? tags.map(String).sort().join("\u0000") : "";
+}
+
+function newerSong(a, b) {
+  return new Date(a.updatedAt) >= new Date(b.updatedAt) ? a : b;
+}

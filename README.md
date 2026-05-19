@@ -16,6 +16,7 @@ The app also runs as a static PWA from the `public/` folder, which is what GitHu
 
 - Store songs locally in browser IndexedDB
 - Optional Supabase sync for cross-device storage
+- Export and import JSON backups of the local library
 - Add and edit songs manually
 - Search title, artist, lyrics, chords, and tags
 - Display Ultimate Guitar-style `[ch]G[/ch]` chord markup with chords aligned above lyrics
@@ -106,6 +107,10 @@ Use sync:
 The table uses Row Level Security policies so signed-in users can only read and write their own songs.
 
 The Supabase anon key is safe to use in the browser when Row Level Security is enabled. Do not use a service-role key in the app.
+
+## Backup
+
+Use **Export** in the library sidebar to download a JSON backup of the songs stored in this browser. Use **Import** to merge a backup into the local library; newer versions replace older matching songs.
 
 ## Test
 

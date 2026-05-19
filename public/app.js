@@ -1,5 +1,16 @@
-import { mergeSongs } from "./song-sync.js";
-import { isChordToken, isPlainChordLine, transposeChord, transposeChordLine } from "./chord-utils.js";
+import { createLibraryBackup, mergeBackupSongs, parseLibraryBackup } from "./backup.js";
+import {
+  deleteStoredSong,
+  getDeletedSongs,
+  getStoredSongs,
+  removeDeletedSong,
+  saveStoredSongs,
+  upsertDeletedSong,
+  upsertStoredSong
+} from "./db.js";
+import { buildMetaPills, normalizeSong, toPlainChordSheet } from "./song-model.js";
+import { detectSongConflicts, mergeSongs } from "./song-sync.js";
+import { renderSheet as buildSheetFragment } from "./song-renderer.js";
 
 const state = {
   songs: [],
@@ -16,6 +27,9 @@ const state = {
   supabaseUser: null,
   supabaseConfig: null,
   syncBusy: false,
+  lastSyncedAt: "",
+  pendingDeleteCount: 0,
+  syncConflictCount: 0,
   query: ""
 };
 
@@ -26,8 +40,12 @@ const elements = {
   songList: document.querySelector("#songList"),
   searchInput: document.querySelector("#searchInput"),
   syncStatus: document.querySelector("#syncStatus"),
+  syncDetails: document.querySelector("#syncDetails"),
   syncNowButton: document.querySelector("#syncNowButton"),
   syncSettingsButton: document.querySelector("#syncSettingsButton"),
+  exportBackupButton: document.querySelector("#exportBackupButton"),
+  importBackupButton: document.querySelector("#importBackupButton"),
+  backupFileInput: document.querySelector("#backupFileInput"),
   newSongButton: document.querySelector("#newSongButton"),
   artistMeta: document.querySelector("#artistMeta"),
   songTitle: document.querySelector("#songTitle"),
@@ -74,6 +92,7 @@ const elements = {
 const SUPABASE_CONFIG_KEY = "songbook.supabase.config";
 const SIDEBAR_COLLAPSED_KEY = "songbook.sidebar.collapsed";
 const THEME_KEY = "songbook.theme";
+const DEFAULT_THEME = "stage";
 const THEMES = ["vintage", "zine", "analog", "stage", "editorial"];
 const AUTOSCROLL_MIN_SPEED = 8;
 const AUTOSCROLL_MAX_SPEED = 100;
@@ -82,14 +101,10 @@ const FONT_SIZE_MIN = 13;
 const FONT_SIZE_MAX = 24;
 const TRANSPOSE_MIN = -6;
 const TRANSPOSE_MAX = 6;
-const HIDDEN_META_TAGS = new Set(["clip", "clipped", "ultimate-guitar", "ultimate guitar"]);
-const DB_NAME = "songbook";
-const DB_VERSION = 2;
-const SONG_STORE = "songs";
-const DELETED_SONG_STORE = "deletedSongs";
 
 await initializeSupabase();
 await loadSongs();
+await refreshPendingDeleteCount();
 const clippedSong = await consumeClipImportFromLocation();
 let clippedSongSyncFailed = false;
 if (clippedSong) {
@@ -148,6 +163,9 @@ function bindEvents() {
   elements.copyButton.addEventListener("click", copySelectedSong);
   elements.syncSettingsButton.addEventListener("click", openSyncDialog);
   elements.syncNowButton.addEventListener("click", syncWithSupabase);
+  elements.exportBackupButton.addEventListener("click", exportLibraryBackup);
+  elements.importBackupButton.addEventListener("click", () => elements.backupFileInput.click());
+  elements.backupFileInput.addEventListener("change", importLibraryBackup);
   elements.closeSyncDialogButton.addEventListener("click", () => elements.syncDialog.close());
   elements.sendMagicLinkButton.addEventListener("click", sendMagicLink);
   elements.signOutButton.addEventListener("click", signOutOfSupabase);
@@ -299,149 +317,7 @@ function renderSelectedSong() {
 }
 
 function renderSheet(song) {
-  const fragment = document.createDocumentFragment();
-  const normalized = stripTabTags(song.rawContent || "");
-  const lines = normalized.split("\n");
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index];
-    const nextLine = lines[index + 1] || "";
-    const cleanedLine = removeUgTags(line);
-
-    if (isPlainChordLine(cleanedLine) && nextLine.trim() && !isPlainChordLine(removeUgTags(nextLine))) {
-      fragment.append(renderResponsiveChordLyricPair(cleanedLine, removeUgTags(nextLine), state.transpose));
-      index += 1;
-      continue;
-    }
-
-    const row = renderLine(line, state.transpose);
-    fragment.append(row);
-  }
-
-  elements.viewer.replaceChildren(fragment);
-}
-
-function renderLine(line, transpose) {
-  const sectionMatch = line.trim().match(/^\[([^\]]+)\]$/);
-  if (sectionMatch && !/ch\]/i.test(line)) {
-    const section = document.createElement("div");
-    section.className = "section-label";
-    section.textContent = sectionMatch[1];
-    return section;
-  }
-
-  const cleanedLine = removeUgTags(line);
-  if (isPlainChordLine(cleanedLine)) {
-    const chordLine = document.createElement("div");
-    chordLine.className = "sheet-line plain-chord-line";
-    chordLine.textContent = transposeChordLine(cleanedLine, transpose);
-    return chordLine;
-  }
-
-  const parsed = parseChordLine(line, 0);
-
-  if (!parsed.hasChords) {
-    const wrapper = document.createElement("div");
-    wrapper.className = "sheet-line";
-    wrapper.textContent = parsed.lyrics;
-    return wrapper;
-  }
-
-  return renderResponsiveChordLyricPair(parsed.chords, parsed.lyrics, transpose);
-}
-
-function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "sheet-line chord-lyric-pair";
-
-  const desktopChordLine = document.createElement("div");
-  desktopChordLine.className = "plain-chord-line pair-desktop-chords";
-  desktopChordLine.textContent = transposeChordLine(chordLine, transpose);
-
-  const desktopLyricLine = document.createElement("div");
-  desktopLyricLine.className = "pair-desktop-lyrics";
-  desktopLyricLine.textContent = lyricLine;
-
-  const mobileLine = document.createElement("div");
-  mobileLine.className = "mobile-flow-line";
-
-  buildMobileChordLyricSegments(chordLine, lyricLine, transpose).forEach((segment) => {
-    const item = document.createElement("span");
-    item.className = "mobile-flow-segment";
-
-    const chord = document.createElement("span");
-    chord.className = "mobile-flow-chord";
-    chord.textContent = segment.chord || "\u00a0";
-
-    const lyric = document.createElement("span");
-    lyric.className = "mobile-flow-lyric";
-    lyric.textContent = segment.lyric || "\u00a0";
-
-    item.append(chord, lyric);
-    mobileLine.append(item);
-  });
-
-  wrapper.append(desktopChordLine, desktopLyricLine, mobileLine);
-  return wrapper;
-}
-
-function buildMobileChordLyricSegments(chordLine, lyricLine, transpose) {
-  const chordMatches = [...chordLine.matchAll(/\S+/g)].filter((match) => isChordToken(match[0]));
-  if (!chordMatches.length) return [{ chord: "", lyric: lyricLine.trim() }];
-
-  const snapToWordStart = (rawPos) => {
-    if (rawPos <= 0) return 0;
-    let p = Math.min(rawPos, lyricLine.length);
-    while (p > 0 && !/\s/.test(lyricLine[p - 1])) p -= 1;
-    return p;
-  };
-
-  const positions = chordMatches.map((match) => snapToWordStart(match.index || 0));
-  const segments = [];
-
-  if (positions[0] > 0) {
-    const leading = lyricLine.slice(0, positions[0]).trim();
-    if (leading) segments.push({ chord: "", lyric: leading });
-  }
-
-  for (let i = 0; i < chordMatches.length; i += 1) {
-    const start = positions[i];
-    const end = i + 1 < chordMatches.length ? positions[i + 1] : lyricLine.length;
-    const lyric = lyricLine.slice(start, end).trim();
-    segments.push({
-      chord: transposeChord(chordMatches[i][0], transpose),
-      lyric
-    });
-  }
-
-  return segments.filter((segment) => segment.chord || segment.lyric);
-}
-
-function parseChordLine(line, transpose) {
-  let lyricPosition = 0;
-  let lyrics = "";
-  let chords = "";
-  let hasChords = false;
-  const tokenRegex = /\[ch\]([\s\S]*?)\[\/ch\]/gi;
-  let lastIndex = 0;
-  let match;
-
-  while ((match = tokenRegex.exec(line)) !== null) {
-    const lyricPart = removeUgTags(line.slice(lastIndex, match.index));
-    lyrics += lyricPart;
-    lyricPosition += lyricPart.length;
-
-    const chord = transposeChord(match[1], transpose);
-    chords = padEnd(chords, lyricPosition);
-    chords += chord;
-    hasChords = true;
-    lastIndex = tokenRegex.lastIndex;
-  }
-
-  const trailing = removeUgTags(line.slice(lastIndex));
-  lyrics += trailing;
-
-  return { lyrics, chords, hasChords };
+  elements.viewer.replaceChildren(buildSheetFragment(song, state.transpose));
 }
 
 function startAutoscroll() {
@@ -563,104 +439,6 @@ function hasLocalApi() {
   return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
-async function getStoredSongs() {
-  const db = await openSongbookDb();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(SONG_STORE, "readonly");
-    const request = transaction.objectStore(SONG_STORE).getAll();
-    request.onsuccess = () => {
-      const songs = request.result || [];
-      songs.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
-      resolve(songs);
-    };
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function upsertStoredSong(song) {
-  const db = await openSongbookDb();
-  const normalized = normalizeSong(song);
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(SONG_STORE, "readwrite");
-    transaction.objectStore(SONG_STORE).put(normalized);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-  return normalized;
-}
-
-async function saveStoredSongs(songs) {
-  const db = await openSongbookDb();
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(SONG_STORE, "readwrite");
-    const store = transaction.objectStore(SONG_STORE);
-    store.clear();
-    songs.map(normalizeSong).forEach((song) => store.put(song));
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-}
-
-async function deleteStoredSong(songId) {
-  const db = await openSongbookDb();
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(SONG_STORE, "readwrite");
-    transaction.objectStore(SONG_STORE).delete(songId);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-}
-
-async function getDeletedSongs() {
-  const db = await openSongbookDb();
-  return new Promise((resolve, reject) => {
-    const transaction = db.transaction(DELETED_SONG_STORE, "readonly");
-    const request = transaction.objectStore(DELETED_SONG_STORE).getAll();
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => reject(request.error);
-  });
-}
-
-async function upsertDeletedSong(songId, deletedAt = new Date().toISOString()) {
-  const db = await openSongbookDb();
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(DELETED_SONG_STORE, "readwrite");
-    transaction.objectStore(DELETED_SONG_STORE).put({ id: songId, deletedAt });
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-}
-
-async function removeDeletedSong(songId) {
-  const db = await openSongbookDb();
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(DELETED_SONG_STORE, "readwrite");
-    transaction.objectStore(DELETED_SONG_STORE).delete(songId);
-    transaction.oncomplete = resolve;
-    transaction.onerror = () => reject(transaction.error);
-  });
-}
-
-function openSongbookDb() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(SONG_STORE)) {
-        const store = db.createObjectStore(SONG_STORE, { keyPath: "id" });
-        store.createIndex("updatedAt", "updatedAt");
-        store.createIndex("sourceUrl", "sourceUrl");
-      }
-      if (!db.objectStoreNames.contains(DELETED_SONG_STORE)) {
-        const store = db.createObjectStore(DELETED_SONG_STORE, { keyPath: "id" });
-        store.createIndex("deletedAt", "deletedAt");
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-}
-
 async function tryLoadLegacyServerSongs() {
   if (!hasLocalApi()) return [];
 
@@ -672,23 +450,6 @@ async function tryLoadLegacyServerSongs() {
   } catch {
     return [];
   }
-}
-
-function normalizeSong(input) {
-  const timestamp = new Date().toISOString();
-  return {
-    id: input.id || crypto.randomUUID(),
-    title: String(input.title || "Untitled song").trim(),
-    artist: String(input.artist || "Unknown artist").trim(),
-    key: String(input.key || "").trim(),
-    capo: String(input.capo || "").trim(),
-    tuning: String(input.tuning || "").trim(),
-    tags: Array.isArray(input.tags) ? input.tags.map(String).filter(Boolean) : [],
-    sourceUrl: String(input.sourceUrl || "").trim(),
-    rawContent: String(input.rawContent || "").replace(/\r\n?/g, "\n").trim(),
-    createdAt: input.createdAt || timestamp,
-    updatedAt: input.updatedAt || timestamp
-  };
 }
 
 async function consumeClipImportFromLocation() {
@@ -849,6 +610,7 @@ async function syncWithSupabase() {
     if (error) throw error;
 
     const remoteSongs = (data || []).map(songFromSupabaseRow);
+    const conflicts = detectSongConflicts(state.songs, remoteSongs, deletedSongs);
     const mergedSongs = mergeSongs(state.songs, remoteSongs, deletedSongs);
     await saveLocalSongs(mergedSongs);
     state.songs = mergedSongs;
@@ -860,6 +622,9 @@ async function syncWithSupabase() {
       if (upsertError) throw upsertError;
     }
 
+    state.lastSyncedAt = new Date().toISOString();
+    state.syncConflictCount = conflicts.length;
+    await refreshPendingDeleteCount();
     updateSyncStatus("Synced");
     render();
   } catch (error) {
@@ -875,6 +640,7 @@ async function syncSongToSupabase(song) {
   if (!canUseSupabase()) return;
   const { error } = await state.supabaseClient.from("songs").upsert(songToSupabaseRow(song), { onConflict: "id" });
   if (error) throw error;
+  state.lastSyncedAt = new Date().toISOString();
   updateSyncStatus("Synced");
 }
 
@@ -900,9 +666,17 @@ function canUseSupabase() {
   return Boolean(state.supabaseClient && state.supabaseUser);
 }
 
+async function refreshPendingDeleteCount() {
+  state.pendingDeleteCount = (await getDeletedSongs()).length;
+  updateSyncStatus();
+}
+
 function updateSyncStatus(message = "") {
   if (!state.supabaseConfig) {
     elements.syncStatus.textContent = "Local only";
+    elements.syncDetails.textContent = state.pendingDeleteCount
+      ? `${state.pendingDeleteCount} deletion${state.pendingDeleteCount === 1 ? "" : "s"} will sync after sign-in.`
+      : "Changes stay on this device.";
     elements.syncNowButton.disabled = true;
     return;
   }
@@ -915,7 +689,38 @@ function updateSyncStatus(message = "") {
     elements.syncStatus.textContent = "Not signed in";
   }
 
+  elements.syncDetails.textContent = buildSyncDetails();
   elements.syncNowButton.disabled = !canUseSupabase() || state.syncBusy;
+}
+
+function buildSyncDetails() {
+  const parts = [];
+  if (state.lastSyncedAt) {
+    parts.push(`Last synced ${formatSyncTime(state.lastSyncedAt)}`);
+  } else if (state.supabaseUser) {
+    parts.push("Ready to sync");
+  } else {
+    parts.push("Sign in to sync across devices");
+  }
+
+  if (state.pendingDeleteCount) {
+    parts.push(`${state.pendingDeleteCount} pending delete${state.pendingDeleteCount === 1 ? "" : "s"}`);
+  }
+
+  if (state.syncConflictCount) {
+    parts.push(`${state.syncConflictCount} possible conflict${state.syncConflictCount === 1 ? "" : "s"} resolved by newest edit`);
+  }
+
+  return parts.join(" · ");
+}
+
+function formatSyncTime(value) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  }).format(new Date(value));
 }
 
 async function saveLocalSongs(songs) {
@@ -953,24 +758,6 @@ function songFromSupabaseRow(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
-}
-
-function buildMetaPills(song) {
-  const visibleTags = (song.tags || []).filter(
-    (tag) => !HIDDEN_META_TAGS.has(String(tag).trim().toLowerCase())
-  );
-  const values = [
-    song.key && `Key ${song.key}`,
-    song.capo && `Capo ${song.capo}`,
-    song.tuning,
-    ...visibleTags
-  ].filter(Boolean);
-
-  return values.map((value) => {
-    const pill = document.createElement("span");
-    pill.textContent = value;
-    return pill;
-  });
 }
 
 function openSongDialog(song = null) {
@@ -1039,6 +826,7 @@ async function deleteSelectedSong() {
     await deleteStoredSong(song.id);
     state.songs = await getStoredSongs();
     state.selectedId = state.songs[0]?.id || null;
+    await refreshPendingDeleteCount();
     render();
   } catch (error) {
     toast(error.message || "Could not delete song.", true);
@@ -1053,6 +841,8 @@ async function deleteSelectedSong() {
   try {
     await deleteSongFromSupabase(song.id);
     await removeDeletedSong(song.id);
+    await refreshPendingDeleteCount();
+    state.lastSyncedAt = new Date().toISOString();
     updateSyncStatus("Synced");
     toast("Deleted song");
   } catch (error) {
@@ -1068,13 +858,91 @@ async function copySelectedSong() {
   toast("Copied song");
 }
 
-function toPlainChordSheet(song) {
-  const header = [`${song.title} - ${song.artist}`];
-  const meta = [song.key && `Key: ${song.key}`, song.capo && `Capo: ${song.capo}`, song.tuning && `Tuning: ${song.tuning}`]
-    .filter(Boolean)
-    .join(" | ");
-  if (meta) header.push(meta);
-  return `${header.join("\n")}\n\n${stripTabTags(song.rawContent || "")}`;
+async function exportLibraryBackup() {
+  try {
+    const deletedSongs = await getDeletedSongs();
+    const backup = createLibraryBackup(state.songs, deletedSongs);
+    const date = new Date().toISOString().slice(0, 10);
+    const filename = `songbook-backup-${date}.json`;
+    const backupText = `${JSON.stringify(backup, null, 2)}\n`;
+
+    if (await trySaveBackupWithPicker(filename, backupText)) {
+      toast(`Saved backup with ${backup.songs.length} songs`);
+      return;
+    }
+
+    downloadBackup(filename, backupText);
+    toast(`Downloaded backup with ${backup.songs.length} songs`);
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      toast("Export cancelled");
+      return;
+    }
+    toast(error.message || "Could not export backup.", true);
+  }
+}
+
+async function trySaveBackupWithPicker(filename, backupText) {
+  if (!("showSaveFilePicker" in window)) return false;
+
+  try {
+    const handle = await window.showSaveFilePicker({
+      suggestedName: filename,
+      types: [{
+        description: "Songbook backup",
+        accept: { "application/json": [".json"] }
+      }]
+    });
+    const writable = await handle.createWritable();
+    await writable.write(backupText);
+    await writable.close();
+    return true;
+  } catch (error) {
+    if (error?.name === "AbortError") throw error;
+    return false;
+  }
+}
+
+function downloadBackup(filename, backupText) {
+  const blob = new Blob([backupText], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function importLibraryBackup(event) {
+  const file = event.target.files?.[0];
+  elements.backupFileInput.value = "";
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const backup = parseLibraryBackup(text);
+    const confirmed = window.confirm(`Import ${backup.songs.length} song${backup.songs.length === 1 ? "" : "s"} from this backup? Newer versions will replace older local copies.`);
+    if (!confirmed) return;
+
+    const result = mergeBackupSongs(state.songs, backup.songs);
+    const deletedIds = new Set(backup.deletedSongs.map((song) => song.id));
+    await saveStoredSongs(result.songs.filter((song) => !deletedIds.has(song.id)));
+    await Promise.all(backup.deletedSongs.map((song) => upsertDeletedSong(song.id, song.deletedAt)));
+    state.songs = await getStoredSongs();
+    state.selectedId = state.songs.some((song) => song.id === state.selectedId) ? state.selectedId : state.songs[0]?.id || null;
+    await refreshPendingDeleteCount();
+    render();
+
+    if (canUseSupabase()) {
+      await syncWithSupabase();
+    }
+
+    toast(`Imported ${result.added} new and ${result.updated} updated song${result.added + result.updated === 1 ? "" : "s"}`);
+  } catch (error) {
+    toast(error.message || "Could not import backup.", true);
+  }
 }
 
 function getFilteredSongs() {
@@ -1087,23 +955,6 @@ function getFilteredSongs() {
 
 function getSelectedSong() {
   return state.songs.find((song) => song.id === state.selectedId) || null;
-}
-
-function stripTabTags(value) {
-  return value
-    .replace(/\u00a0/g, " ")
-    .replace(/\t/g, "    ")
-    .replace(/\[\/?tab\]/gi, "");
-}
-
-function removeUgTags(value) {
-  return stripTabTags(value)
-    .replace(/\[(?:\/)?(?:b|i|u)\]/gi, "")
-    .replace(/\[url[^\]]*\]([\s\S]*?)\[\/url\]/gi, "$1");
-}
-
-function padEnd(value, length) {
-  return value.length >= length ? value : `${value}${" ".repeat(length - value.length)}`;
 }
 
 function toggleAutoscroll() {
@@ -1191,13 +1042,13 @@ function applyTheme(name) {
 }
 
 function restoreTheme() {
-  let theme = "";
+  let theme = DEFAULT_THEME;
   try {
-    theme = localStorage.getItem(THEME_KEY) || "";
+    theme = localStorage.getItem(THEME_KEY) || DEFAULT_THEME;
   } catch (error) {
-    theme = "";
+    theme = DEFAULT_THEME;
   }
-  if (!THEMES.includes(theme)) theme = "";
+  if (!THEMES.includes(theme)) theme = DEFAULT_THEME;
   elements.themeSelect.value = theme;
   applyTheme(theme);
 }
