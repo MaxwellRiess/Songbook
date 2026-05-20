@@ -1352,12 +1352,20 @@ function formatPlaylistSyncError(error) {
   if (isMissingPlaylistTableError(error)) {
     return new Error("Playlist sync needs the latest Supabase schema. Run supabase/schema.sql in your Supabase project.");
   }
+  if (isPlaylistIdTypeError(error)) {
+    return new Error("Playlist sync needs the latest Supabase schema. Run supabase/schema.sql again so playlist IDs are stored as text.");
+  }
   return error;
 }
 
 function isMissingPlaylistTableError(error) {
   const text = [error?.code, error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
   return /playlists/i.test(text) && /(does not exist|not found|schema cache|PGRST205|42P01)/i.test(text);
+}
+
+function isPlaylistIdTypeError(error) {
+  const text = [error?.code, error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
+  return /(22P02|invalid input syntax for type uuid)/i.test(text);
 }
 
 function openSongDialog(song = null) {

@@ -94,6 +94,8 @@ Set up Supabase:
 4. In **Project Settings > API**, copy the project URL and anon public key
 5. In **Authentication > URL Configuration**, add your app URL to the redirect URLs
 
+If playlists already existed before playlist sync was added, run the latest `supabase/schema.sql` again. It migrates playlist IDs and playlist song IDs to text columns so older local IDs can sync safely.
+
 Use sync:
 
 1. Open Songbook

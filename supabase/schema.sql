@@ -40,14 +40,22 @@ create index if not exists songs_user_updated_idx
 on public.songs (user_id, updated_at desc);
 
 create table if not exists public.playlists (
-  id uuid primary key,
+  id text primary key,
   user_id uuid not null references auth.users(id) on delete cascade,
   name text not null,
   description text not null default '',
-  song_ids uuid[] not null default '{}',
+  song_ids text[] not null default '{}',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.playlists
+alter column id type text using id::text;
+
+alter table public.playlists
+alter column song_ids type text[] using song_ids::text[];
+
+grant select, insert, update, delete on table public.playlists to authenticated;
 
 alter table public.playlists enable row level security;
 
