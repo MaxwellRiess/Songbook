@@ -38,38 +38,52 @@
           </button>
         </div>
 
-        <label class="menu-theme">
-          <span>Theme</span>
-          <select id="themeSelect">
-            <option value="">Original</option>
-            <option value="vintage">Letterpress Hymnal</option>
-            <option value="zine">DIY Zine</option>
-            <option value="analog">Analog Folk</option>
-            <option value="stage" selected>Stage Mode</option>
-            <option value="editorial">Editorial</option>
-          </select>
-        </label>
+        <details class="settings-disclosure">
+          <summary>Settings and syncing</summary>
+          <div class="settings-content">
+            <label class="menu-theme">
+              <span>Theme</span>
+              <select id="themeSelect">
+                <option value="">Original</option>
+                <option value="vintage">Letterpress Hymnal</option>
+                <option value="zine">DIY Zine</option>
+                <option value="analog">Analog Folk</option>
+                <option value="stage" selected>Stage Mode</option>
+                <option value="editorial">Editorial</option>
+              </select>
+            </label>
+
+            <div class="sync-panel">
+              <div>
+                <span>Sync</span>
+                <strong id="syncStatus">Local only</strong>
+                <p id="syncDetails" class="sync-details">Changes stay on this device.</p>
+              </div>
+              <div class="sync-actions">
+                <button id="syncNowButton" type="button" disabled>Sync</button>
+                <button id="syncSettingsButton" type="button">Settings</button>
+              </div>
+              <div class="backup-actions">
+                <button id="exportBackupButton" type="button">Export</button>
+                <button id="importBackupButton" type="button">Import</button>
+                <input id="backupFileInput" type="file" accept="application/json,.json" hidden>
+              </div>
+            </div>
+          </div>
+        </details>
 
         <label class="search-box">
           <span>Search</span>
           <input id="searchInput" type="search" placeholder="Title, artist, lyrics, chord">
         </label>
 
-        <div class="sync-panel">
-          <div>
-            <span>Sync</span>
-            <strong id="syncStatus">Local only</strong>
-            <p id="syncDetails" class="sync-details">Changes stay on this device.</p>
+        <div class="library-controls" aria-label="Library views">
+          <div class="library-tabs" role="tablist" aria-label="Song organization">
+            <button id="recentViewButton" type="button" data-library-view="recent" aria-pressed="true">Recent</button>
+            <button id="playlistsViewButton" type="button" data-library-view="playlists" aria-pressed="false">Playlists</button>
+            <button id="artistsViewButton" type="button" data-library-view="artists" aria-pressed="false">Artists</button>
           </div>
-          <div class="sync-actions">
-            <button id="syncNowButton" type="button" disabled>Sync</button>
-            <button id="syncSettingsButton" type="button">Settings</button>
-          </div>
-          <div class="backup-actions">
-            <button id="exportBackupButton" type="button">Export</button>
-            <button id="importBackupButton" type="button">Import</button>
-            <input id="backupFileInput" type="file" accept="application/json,.json" hidden>
-          </div>
+          <div id="libraryViewControls" class="library-view-controls"></div>
         </div>
 
         <div id="songList" class="song-list" role="list"></div>
@@ -88,6 +102,10 @@
             <div id="songMeta" class="song-meta"></div>
           </div>
           <div class="header-actions">
+            <div class="header-playlist-picker" aria-label="Add selected song to playlist">
+              <button id="headerPlaylistMenuButton" type="button" aria-haspopup="menu" aria-expanded="false" disabled>Add to playlist</button>
+              <div id="headerPlaylistMenu" class="header-playlist-menu" role="menu" hidden></div>
+            </div>
             <button id="editButton" type="button" disabled>Edit</button>
             <button id="deleteButton" class="danger-button" type="button" disabled>Delete</button>
           </div>

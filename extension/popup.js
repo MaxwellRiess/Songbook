@@ -143,9 +143,10 @@ function waitForTabComplete(tabId) {
 
 function importSongIntoSongbookPage(song) {
   const DB_NAME = "songbook";
-  const DB_VERSION = 2;
+  const DB_VERSION = 3;
   const SONG_STORE = "songs";
   const DELETED_SONG_STORE = "deletedSongs";
+  const PLAYLIST_STORE = "playlists";
 
   const normalizedSong = normalizeSong(song);
 
@@ -175,6 +176,10 @@ function importSongIntoSongbookPage(song) {
           const store = db.createObjectStore(DELETED_SONG_STORE, { keyPath: "id" });
           store.createIndex("deletedAt", "deletedAt");
         }
+        if (!db.objectStoreNames.contains(PLAYLIST_STORE)) {
+          const store = db.createObjectStore(PLAYLIST_STORE, { keyPath: "id" });
+          store.createIndex("updatedAt", "updatedAt");
+        }
       };
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -194,7 +199,8 @@ function importSongIntoSongbookPage(song) {
       sourceUrl: String(input.sourceUrl || "").trim(),
       rawContent: String(input.rawContent || "").replace(/\r\n?/g, "\n").trim(),
       createdAt: input.createdAt || timestamp,
-      updatedAt: input.updatedAt || timestamp
+      updatedAt: input.updatedAt || timestamp,
+      lastOpenedAt: input.lastOpenedAt || ""
     };
   }
 }

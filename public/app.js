@@ -1,21 +1,42 @@
-import { createLibraryBackup, mergeBackupSongs, parseLibraryBackup } from "./backup.js";
+import { createLibraryBackup, mergeBackupPlaylists, mergeBackupSongs, parseLibraryBackup } from "./backup.js";
 import {
+  deleteStoredPlaylist,
   deleteStoredSong,
   getDeletedSongs,
+  getStoredPlaylists,
   getStoredSongs,
   removeDeletedSong,
+  saveStoredPlaylists,
   saveStoredSongs,
   upsertDeletedSong,
+  upsertStoredPlaylist,
   upsertStoredSong
 } from "./db.js";
+import {
+  addSongToPlaylist,
+  filterSongs,
+  groupSongsByArtist,
+  movePlaylistSong,
+  normalizePlaylist,
+  removeSongFromPlaylist,
+  songsForPlaylist,
+  sortRecentSongs
+} from "./library-model.js";
 import { buildMetaPills, normalizeSong, toPlainChordSheet } from "./song-model.js";
 import { detectSongConflicts, mergeSongs } from "./song-sync.js";
 import { renderSheet as buildSheetFragment } from "./song-renderer.js";
 
 const state = {
   songs: [],
+  playlists: [],
   selectedId: null,
   editingId: null,
+  renamingPlaylistId: null,
+  playlistMenuOpen: false,
+  libraryView: "recent",
+  recentMode: "opened",
+  expandedArtistKeys: new Set(),
+  expandedPlaylistIds: new Set(),
   transpose: 0,
   fontSize: 16,
   autoscrollActive: false,
@@ -38,6 +59,8 @@ const elements = {
   sidebarToggle: document.querySelector("#sidebarToggle"),
   songCount: document.querySelector("#songCount"),
   songList: document.querySelector("#songList"),
+  libraryViewControls: document.querySelector("#libraryViewControls"),
+  libraryViewButtons: document.querySelectorAll("[data-library-view]"),
   searchInput: document.querySelector("#searchInput"),
   syncStatus: document.querySelector("#syncStatus"),
   syncDetails: document.querySelector("#syncDetails"),
@@ -51,6 +74,8 @@ const elements = {
   songTitle: document.querySelector("#songTitle"),
   songMeta: document.querySelector("#songMeta"),
   viewer: document.querySelector("#viewer"),
+  headerPlaylistMenuButton: document.querySelector("#headerPlaylistMenuButton"),
+  headerPlaylistMenu: document.querySelector("#headerPlaylistMenu"),
   editButton: document.querySelector("#editButton"),
   deleteButton: document.querySelector("#deleteButton"),
   copyButton: document.querySelector("#copyButton"),
@@ -103,7 +128,7 @@ const TRANSPOSE_MIN = -6;
 const TRANSPOSE_MAX = 6;
 
 await initializeSupabase();
-await loadSongs();
+await loadLibrary();
 await refreshPendingDeleteCount();
 const clippedSong = await consumeClipImportFromLocation();
 let clippedSongSyncFailed = false;
@@ -129,8 +154,9 @@ if (clippedSong) {
 }
 registerServiceWorker();
 
-async function loadSongs() {
+async function loadLibrary() {
   state.songs = await getStoredSongs();
+  state.playlists = await getStoredPlaylists();
   if (!state.songs.length) {
     const legacySongs = await tryLoadLegacyServerSongs();
     if (legacySongs.length) {
@@ -147,6 +173,12 @@ function bindEvents() {
     renderSongList();
   });
 
+  elements.libraryViewButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      setLibraryView(button.dataset.libraryView);
+    });
+  });
+
   elements.sidebarToggle.addEventListener("click", () => {
     setSidebarCollapsed(!elements.appShell.classList.contains("sidebar-collapsed"));
   });
@@ -161,6 +193,10 @@ function bindEvents() {
   elements.editButton.addEventListener("click", () => openSongDialog(getSelectedSong()));
   elements.deleteButton.addEventListener("click", deleteSelectedSong);
   elements.copyButton.addEventListener("click", copySelectedSong);
+  elements.headerPlaylistMenuButton.addEventListener("click", () => {
+    state.playlistMenuOpen = !state.playlistMenuOpen;
+    renderHeaderPlaylistPicker(getSelectedSong());
+  });
   elements.syncSettingsButton.addEventListener("click", openSyncDialog);
   elements.syncNowButton.addEventListener("click", syncWithSupabase);
   elements.exportBackupButton.addEventListener("click", exportLibraryBackup);
@@ -171,6 +207,12 @@ function bindEvents() {
   elements.signOutButton.addEventListener("click", signOutOfSupabase);
   elements.closeDialogButton.addEventListener("click", () => elements.dialog.close());
   elements.cancelButton.addEventListener("click", () => elements.dialog.close());
+
+  document.addEventListener("click", (event) => {
+    if (!state.playlistMenuOpen) return;
+    if (event.target.closest(".header-playlist-picker")) return;
+    closeHeaderPlaylistMenu();
+  });
 
   elements.transposeDown.addEventListener("click", () => setTranspose(state.transpose - 1));
   elements.transposeUp.addEventListener("click", () => setTranspose(state.transpose + 1));
@@ -183,6 +225,10 @@ function bindEvents() {
   });
 
   document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.playlistMenuOpen) {
+      closeHeaderPlaylistMenu();
+      return;
+    }
     if (event.code !== "Space" && event.key !== " ") return;
     if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
     if (isTypingTarget(event.target)) return;
@@ -253,6 +299,12 @@ function render() {
 function renderSongList() {
   const songs = getFilteredSongs();
   elements.songCount.textContent = `${state.songs.length} ${state.songs.length === 1 ? "song" : "songs"}`;
+  elements.libraryViewButtons.forEach((button) => {
+    const isActive = button.dataset.libraryView === state.libraryView;
+    button.classList.toggle("active", isActive);
+    button.setAttribute("aria-pressed", String(isActive));
+  });
+  renderLibraryViewControls(songs);
   elements.songList.replaceChildren();
 
   if (!songs.length) {
@@ -263,33 +315,398 @@ function renderSongList() {
     return;
   }
 
-  for (const song of songs) {
+  if (state.libraryView === "playlists") {
+    renderPlaylistList(songs);
+    return;
+  }
+
+  if (state.libraryView === "artists") {
+    renderArtistList(songs);
+    return;
+  }
+
+  renderRecentList(songs);
+}
+
+function renderLibraryViewControls(songs) {
+  elements.libraryViewControls.replaceChildren();
+
+  if (state.libraryView === "recent") {
+    const field = document.createElement("label");
+    field.className = "compact-field";
+    const caption = document.createElement("span");
+    caption.textContent = "Sort";
+    const select = document.createElement("select");
+    select.value = state.recentMode;
+    [
+      ["opened", "Recently opened"],
+      ["created", "Recently imported"],
+      ["updated", "Recently edited"]
+    ].forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      select.append(option);
+    });
+    select.addEventListener("change", () => {
+      state.recentMode = select.value;
+      renderSongList();
+    });
+    field.append(caption, select);
+    elements.libraryViewControls.append(field);
+    return;
+  }
+
+  if (state.libraryView === "playlists") {
+    const form = document.createElement("form");
+    form.className = "playlist-create";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "New playlist";
+    input.setAttribute("aria-label", "New playlist name");
     const button = document.createElement("button");
-    button.className = `song-row${song.id === state.selectedId ? " active" : ""}`;
-    button.type = "button";
-    button.addEventListener("click", () => {
-      state.selectedId = song.id;
-      state.transpose = 0;
-      updateTransposeDisplay();
-      stopAutoscroll();
-      if (isMobileViewport()) setSidebarCollapsed(true);
-      render();
+    button.type = "submit";
+    button.textContent = "Add";
+    form.append(input, button);
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await createPlaylist(input.value);
+      input.value = "";
     });
 
-    const title = document.createElement("strong");
-    title.textContent = song.title;
-
-    const meta = document.createElement("span");
-    meta.textContent = [song.artist, song.key && `Key ${song.key}`].filter(Boolean).join(" · ");
-
-    button.append(title, meta);
-    elements.songList.append(button);
+    const hint = document.createElement("p");
+    hint.className = "library-hint";
+    const selectedSong = getSelectedSong();
+    hint.textContent = selectedSong
+      ? `Selected: ${selectedSong.title}`
+      : "Select a song, then add it to a playlist.";
+    elements.libraryViewControls.append(form, hint);
+    return;
   }
+
+  if (state.libraryView === "artists") {
+    const hint = document.createElement("p");
+    hint.className = "library-hint";
+    const groupCount = groupSongsByArtist(songs).length;
+    hint.textContent = `${groupCount} ${groupCount === 1 ? "artist" : "artists"}`;
+    elements.libraryViewControls.append(hint);
+  }
+}
+
+function renderRecentList(songs) {
+  for (const song of sortRecentSongs(songs, state.recentMode)) {
+    elements.songList.append(createSongRow(song));
+  }
+}
+
+function renderArtistList(songs) {
+  const groups = groupSongsByArtist(songs);
+  if (!groups.length) {
+    const empty = document.createElement("div");
+    empty.className = "list-empty";
+    empty.textContent = "No artists";
+    elements.songList.append(empty);
+    return;
+  }
+
+  for (const group of groups) {
+    const section = document.createElement("section");
+    section.className = "artist-group";
+
+    const header = document.createElement("button");
+    header.className = "library-group-header";
+    header.type = "button";
+    header.setAttribute("aria-expanded", String(state.expandedArtistKeys.has(group.key)));
+    header.addEventListener("click", () => {
+      toggleSetValue(state.expandedArtistKeys, group.key);
+      renderSongList();
+    });
+
+    const label = document.createElement("strong");
+    label.textContent = group.name;
+    const count = document.createElement("span");
+    count.textContent = `${group.songs.length} ${group.songs.length === 1 ? "song" : "songs"}`;
+    header.append(label, count);
+    section.append(header);
+
+    if (state.expandedArtistKeys.has(group.key)) {
+      const songsContainer = document.createElement("div");
+      songsContainer.className = "library-group-songs";
+      group.songs.forEach((song) => songsContainer.append(createSongRow(song)));
+      section.append(songsContainer);
+    }
+
+    elements.songList.append(section);
+  }
+}
+
+function renderPlaylistList(songs) {
+  if (!state.playlists.length) {
+    const empty = document.createElement("div");
+    empty.className = "list-empty";
+    empty.textContent = "No playlists yet";
+    elements.songList.append(empty);
+    return;
+  }
+
+  for (const playlist of state.playlists) {
+    const section = document.createElement("section");
+    section.className = "playlist-group";
+    const playlistSongs = songsForPlaylist(playlist, state.songs);
+    const visiblePlaylistSongs = playlistSongs.filter((song) => songs.includes(song));
+    const isExpanded = state.expandedPlaylistIds.has(playlist.id);
+    const isRenaming = state.renamingPlaylistId === playlist.id;
+    const selectedSong = getSelectedSong();
+
+    const header = document.createElement("div");
+    header.className = `playlist-header${isRenaming ? " renaming" : ""}`;
+
+    if (isRenaming) {
+      header.append(createPlaylistRenameForm(playlist));
+      section.append(header);
+      elements.songList.append(section);
+      continue;
+    }
+
+    const toggle = document.createElement("button");
+    toggle.className = "library-group-header playlist-toggle";
+    toggle.type = "button";
+    toggle.setAttribute("aria-expanded", String(isExpanded));
+    toggle.addEventListener("click", () => {
+      toggleSetValue(state.expandedPlaylistIds, playlist.id);
+      renderSongList();
+    });
+
+    const name = document.createElement("strong");
+    name.textContent = playlist.name;
+    const count = document.createElement("span");
+    count.textContent = `${playlistSongs.length} ${playlistSongs.length === 1 ? "song" : "songs"}`;
+    toggle.append(name, count);
+
+    const actions = document.createElement("div");
+    actions.className = "playlist-actions";
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.textContent = "+";
+    addButton.title = selectedSong ? `Add "${selectedSong.title}"` : "Select a song first";
+    addButton.setAttribute("aria-label", addButton.title);
+    addButton.disabled = !selectedSong || playlist.songIds.includes(selectedSong.id);
+    addButton.addEventListener("click", async () => {
+      if (!selectedSong) return;
+      await savePlaylist(addSongToPlaylist(playlist, selectedSong.id));
+      state.expandedPlaylistIds.add(playlist.id);
+      toast("Added to playlist");
+    });
+
+    const renameButton = document.createElement("button");
+    renameButton.type = "button";
+    renameButton.textContent = "Rename";
+    renameButton.title = `Rename "${playlist.name}"`;
+    renameButton.setAttribute("aria-label", renameButton.title);
+    renameButton.addEventListener("click", () => {
+      state.renamingPlaylistId = playlist.id;
+      renderSongList();
+    });
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.textContent = "x";
+    deleteButton.title = `Delete "${playlist.name}"`;
+    deleteButton.setAttribute("aria-label", deleteButton.title);
+    deleteButton.addEventListener("click", async () => {
+      await deletePlaylist(playlist);
+    });
+    actions.append(addButton, renameButton, deleteButton);
+    header.append(toggle, actions);
+    section.append(header);
+
+    if (isExpanded) {
+      const songsContainer = document.createElement("div");
+      songsContainer.className = "library-group-songs playlist-songs";
+      if (!playlistSongs.length) {
+        const empty = document.createElement("div");
+        empty.className = "list-empty compact-empty";
+        empty.textContent = "No songs in this playlist";
+        songsContainer.append(empty);
+      } else if (!visiblePlaylistSongs.length) {
+        const empty = document.createElement("div");
+        empty.className = "list-empty compact-empty";
+        empty.textContent = "No playlist songs match this search";
+        songsContainer.append(empty);
+      } else {
+        visiblePlaylistSongs.forEach((song) => songsContainer.append(createPlaylistSongRow(playlist, song, playlistSongs)));
+      }
+      section.append(songsContainer);
+    }
+
+    elements.songList.append(section);
+  }
+}
+
+function createPlaylistRenameForm(playlist) {
+  const form = document.createElement("form");
+  form.className = "playlist-rename";
+
+  const input = document.createElement("input");
+  input.value = playlist.name;
+  input.setAttribute("aria-label", `Playlist name for ${playlist.name}`);
+
+  const saveButton = document.createElement("button");
+  saveButton.type = "submit";
+  saveButton.textContent = "Save";
+
+  const cancelButton = document.createElement("button");
+  cancelButton.type = "button";
+  cancelButton.textContent = "Cancel";
+  cancelButton.addEventListener("click", () => {
+    state.renamingPlaylistId = null;
+    renderSongList();
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    await renamePlaylist(playlist, input.value);
+  });
+
+  form.append(input, saveButton, cancelButton);
+  requestAnimationFrame(() => {
+    input.focus();
+    input.select();
+  });
+  return form;
+}
+
+function createSongRow(song) {
+  const button = document.createElement("button");
+  button.className = `song-row${song.id === state.selectedId ? " active" : ""}`;
+  button.type = "button";
+  button.addEventListener("click", () => selectSong(song.id));
+
+  const title = document.createElement("strong");
+  title.textContent = song.title;
+
+  const meta = document.createElement("span");
+  meta.textContent = [song.artist, song.key && `Key ${song.key}`].filter(Boolean).join(" · ");
+
+  button.append(title, meta);
+  return button;
+}
+
+function createPlaylistSongRow(playlist, song, playlistSongs) {
+  const row = document.createElement("div");
+  row.className = `playlist-song-row${song.id === state.selectedId ? " active" : ""}`;
+
+  const songButton = createSongRow(song);
+  songButton.classList.add("playlist-song-button");
+
+  const actions = document.createElement("div");
+  actions.className = "playlist-song-actions";
+  const index = playlistSongs.findIndex((playlistSong) => playlistSong.id === song.id);
+  const upButton = createSmallActionButton("^", "Move up", async () => {
+    await savePlaylist(movePlaylistSong(playlist, song.id, -1));
+  });
+  upButton.disabled = index <= 0;
+  const downButton = createSmallActionButton("v", "Move down", async () => {
+    await savePlaylist(movePlaylistSong(playlist, song.id, 1));
+  });
+  downButton.disabled = index >= playlistSongs.length - 1;
+  const removeButton = createSmallActionButton("x", "Remove from playlist", async () => {
+    await savePlaylist(removeSongFromPlaylist(playlist, song.id));
+    toast("Removed from playlist");
+  });
+  actions.append(upButton, downButton, removeButton);
+  row.append(songButton, actions);
+  return row;
+}
+
+function createSmallActionButton(text, label, handler) {
+  const button = document.createElement("button");
+  button.className = "small-icon-button";
+  button.type = "button";
+  button.textContent = text;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.addEventListener("click", handler);
+  return button;
+}
+
+async function selectSong(songId) {
+  const song = state.songs.find((candidate) => candidate.id === songId);
+  if (!song) return;
+  state.selectedId = song.id;
+  state.playlistMenuOpen = false;
+  state.transpose = 0;
+  updateTransposeDisplay();
+  stopAutoscroll();
+  const openedSong = await upsertStoredSong({ ...song, lastOpenedAt: new Date().toISOString() });
+  state.songs = state.songs.map((candidate) => candidate.id === openedSong.id ? openedSong : candidate);
+  if (isMobileViewport()) setSidebarCollapsed(true);
+  render();
+}
+
+function setLibraryView(view) {
+  if (!["recent", "playlists", "artists"].includes(view) || state.libraryView === view) return;
+  state.libraryView = view;
+  renderSongList();
+}
+
+function toggleSetValue(set, value) {
+  if (set.has(value)) {
+    set.delete(value);
+  } else {
+    set.add(value);
+  }
+}
+
+async function createPlaylist(name) {
+  const trimmedName = String(name || "").trim();
+  if (!trimmedName) {
+    toast("Enter a playlist name.", true);
+    return;
+  }
+  const playlist = await upsertStoredPlaylist(normalizePlaylist({ name: trimmedName }));
+  state.playlists = await getStoredPlaylists();
+  state.expandedPlaylistIds.add(playlist.id);
+  renderSongList();
+  renderSelectedSong();
+  toast("Created playlist");
+}
+
+async function savePlaylist(playlist) {
+  const saved = await upsertStoredPlaylist(playlist);
+  state.playlists = await getStoredPlaylists();
+  state.expandedPlaylistIds.add(saved.id);
+  renderSongList();
+  renderSelectedSong();
+  return saved;
+}
+
+async function deletePlaylist(playlist) {
+  const confirmed = window.confirm(`Delete playlist "${playlist.name}"? Songs will stay in your library.`);
+  if (!confirmed) return;
+  await deleteStoredPlaylist(playlist.id);
+  state.expandedPlaylistIds.delete(playlist.id);
+  state.playlists = await getStoredPlaylists();
+  renderSongList();
+  renderSelectedSong();
+  toast("Deleted playlist");
+}
+
+async function renamePlaylist(playlist, nextName) {
+  const trimmedName = String(nextName || "").trim();
+  if (!trimmedName) {
+    toast("Enter a playlist name.", true);
+    return;
+  }
+  state.renamingPlaylistId = null;
+  await savePlaylist({ ...playlist, name: trimmedName, updatedAt: new Date().toISOString() });
+  toast("Renamed playlist");
 }
 
 function renderSelectedSong() {
   const song = getSelectedSong();
   const hasSong = Boolean(song);
+  renderHeaderPlaylistPicker(song);
   elements.editButton.disabled = !hasSong;
   elements.deleteButton.disabled = !hasSong;
   elements.copyButton.disabled = !hasSong;
@@ -314,6 +731,73 @@ function renderSelectedSong() {
   elements.songMeta.replaceChildren(...buildMetaPills(song));
   elements.viewer.className = "viewer sheet";
   renderSheet(song);
+}
+
+function renderHeaderPlaylistPicker(song) {
+  const container = elements.headerPlaylistMenuButton.closest(".header-playlist-picker");
+  const availablePlaylists = song
+    ? state.playlists.filter((playlist) => !playlist.songIds.includes(song.id))
+    : [];
+  container.hidden = !song;
+  elements.headerPlaylistMenu.replaceChildren();
+  elements.headerPlaylistMenu.hidden = !state.playlistMenuOpen || !availablePlaylists.length;
+  elements.headerPlaylistMenuButton.setAttribute("aria-expanded", String(state.playlistMenuOpen && availablePlaylists.length > 0));
+
+  if (!song) {
+    state.playlistMenuOpen = false;
+    elements.headerPlaylistMenuButton.disabled = true;
+    elements.headerPlaylistMenuButton.title = "Select a song first";
+    return;
+  }
+
+  if (!state.playlists.length) {
+    state.playlistMenuOpen = false;
+    elements.headerPlaylistMenuButton.disabled = true;
+    elements.headerPlaylistMenuButton.title = "Create a playlist first";
+    return;
+  }
+
+  if (!availablePlaylists.length) {
+    state.playlistMenuOpen = false;
+    elements.headerPlaylistMenuButton.disabled = true;
+    elements.headerPlaylistMenuButton.title = "This song is already in every playlist";
+    return;
+  }
+
+  elements.headerPlaylistMenuButton.disabled = false;
+  elements.headerPlaylistMenuButton.title = "Add this song to a playlist";
+
+  for (const playlist of availablePlaylists) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "menuitem");
+    button.textContent = playlist.name;
+    button.addEventListener("click", async () => {
+      await addSongToHeaderPlaylist(playlist);
+    });
+    elements.headerPlaylistMenu.append(button);
+  }
+}
+
+async function addSongToHeaderPlaylist(playlist) {
+  const song = getSelectedSong();
+  if (!song || !playlist) return;
+
+  if (playlist.songIds.includes(song.id)) {
+    toast("Song is already in that playlist.");
+    closeHeaderPlaylistMenu();
+    return;
+  }
+
+  state.playlistMenuOpen = false;
+  await savePlaylist(addSongToPlaylist(playlist, song.id));
+  toast(`Added to ${playlist.name}`);
+}
+
+function closeHeaderPlaylistMenu() {
+  if (!state.playlistMenuOpen) return;
+  state.playlistMenuOpen = false;
+  renderHeaderPlaylistPicker(getSelectedSong());
 }
 
 function renderSheet(song) {
@@ -611,7 +1095,7 @@ async function syncWithSupabase() {
 
     const remoteSongs = (data || []).map(songFromSupabaseRow);
     const conflicts = detectSongConflicts(state.songs, remoteSongs, deletedSongs);
-    const mergedSongs = mergeSongs(state.songs, remoteSongs, deletedSongs);
+    const mergedSongs = preserveLocalOpenTimes(mergeSongs(state.songs, remoteSongs, deletedSongs), state.songs);
     await saveLocalSongs(mergedSongs);
     state.songs = mergedSongs;
     state.selectedId = mergedSongs.some((song) => song.id === state.selectedId) ? state.selectedId : mergedSongs[0]?.id || null;
@@ -727,6 +1211,14 @@ async function saveLocalSongs(songs) {
   await saveStoredSongs(songs);
 }
 
+function preserveLocalOpenTimes(songs, localSongs) {
+  const openedById = new Map(localSongs.map((song) => [song.id, song.lastOpenedAt]).filter(([, lastOpenedAt]) => lastOpenedAt));
+  return songs.map((song) => ({
+    ...song,
+    lastOpenedAt: openedById.get(song.id) || song.lastOpenedAt || ""
+  }));
+}
+
 function songToSupabaseRow(song) {
   return {
     id: song.id,
@@ -824,7 +1316,9 @@ async function deleteSelectedSong() {
   try {
     await upsertDeletedSong(song.id);
     await deleteStoredSong(song.id);
+    await removeSongFromAllPlaylists(song.id);
     state.songs = await getStoredSongs();
+    state.playlists = await getStoredPlaylists();
     state.selectedId = state.songs[0]?.id || null;
     await refreshPendingDeleteCount();
     render();
@@ -851,6 +1345,13 @@ async function deleteSelectedSong() {
   }
 }
 
+async function removeSongFromAllPlaylists(songId) {
+  const updatedPlaylists = state.playlists.map((playlist) => removeSongFromPlaylist(playlist, songId));
+  const changedPlaylists = updatedPlaylists.filter((playlist, index) => playlist.songIds.length !== state.playlists[index].songIds.length);
+  if (!changedPlaylists.length) return;
+  await Promise.all(changedPlaylists.map(upsertStoredPlaylist));
+}
+
 async function copySelectedSong() {
   const song = getSelectedSong();
   if (!song) return;
@@ -861,18 +1362,18 @@ async function copySelectedSong() {
 async function exportLibraryBackup() {
   try {
     const deletedSongs = await getDeletedSongs();
-    const backup = createLibraryBackup(state.songs, deletedSongs);
+    const backup = createLibraryBackup(state.songs, deletedSongs, state.playlists);
     const date = new Date().toISOString().slice(0, 10);
     const filename = `songbook-backup-${date}.json`;
     const backupText = `${JSON.stringify(backup, null, 2)}\n`;
 
     if (await trySaveBackupWithPicker(filename, backupText)) {
-      toast(`Saved backup with ${backup.songs.length} songs`);
+      toast(`Saved backup with ${backup.songs.length} songs and ${backup.playlists.length} playlists`);
       return;
     }
 
     downloadBackup(filename, backupText);
-    toast(`Downloaded backup with ${backup.songs.length} songs`);
+    toast(`Downloaded backup with ${backup.songs.length} songs and ${backup.playlists.length} playlists`);
   } catch (error) {
     if (error?.name === "AbortError") {
       toast("Export cancelled");
@@ -923,14 +1424,17 @@ async function importLibraryBackup(event) {
   try {
     const text = await file.text();
     const backup = parseLibraryBackup(text);
-    const confirmed = window.confirm(`Import ${backup.songs.length} song${backup.songs.length === 1 ? "" : "s"} from this backup? Newer versions will replace older local copies.`);
+    const confirmed = window.confirm(`Import ${backup.songs.length} song${backup.songs.length === 1 ? "" : "s"} and ${backup.playlists.length} playlist${backup.playlists.length === 1 ? "" : "s"} from this backup? Newer versions will replace older local copies.`);
     if (!confirmed) return;
 
     const result = mergeBackupSongs(state.songs, backup.songs);
+    const playlistResult = mergeBackupPlaylists(state.playlists, backup.playlists);
     const deletedIds = new Set(backup.deletedSongs.map((song) => song.id));
     await saveStoredSongs(result.songs.filter((song) => !deletedIds.has(song.id)));
+    await saveStoredPlaylists(removeDeletedSongsFromPlaylists(playlistResult.playlists, deletedIds));
     await Promise.all(backup.deletedSongs.map((song) => upsertDeletedSong(song.id, song.deletedAt)));
     state.songs = await getStoredSongs();
+    state.playlists = await getStoredPlaylists();
     state.selectedId = state.songs.some((song) => song.id === state.selectedId) ? state.selectedId : state.songs[0]?.id || null;
     await refreshPendingDeleteCount();
     render();
@@ -939,18 +1443,22 @@ async function importLibraryBackup(event) {
       await syncWithSupabase();
     }
 
-    toast(`Imported ${result.added} new and ${result.updated} updated song${result.added + result.updated === 1 ? "" : "s"}`);
+    toast(`Imported ${result.added} new songs, ${result.updated} updated songs, and ${playlistResult.added + playlistResult.updated} playlists`);
   } catch (error) {
     toast(error.message || "Could not import backup.", true);
   }
 }
 
+function removeDeletedSongsFromPlaylists(playlists, deletedIds) {
+  if (!deletedIds.size) return playlists;
+  return playlists.map((playlist) => ({
+    ...playlist,
+    songIds: playlist.songIds.filter((songId) => !deletedIds.has(songId))
+  }));
+}
+
 function getFilteredSongs() {
-  if (!state.query) return state.songs;
-  return state.songs.filter((song) => {
-    const haystack = [song.title, song.artist, song.key, song.rawContent, ...(song.tags || [])].join(" ").toLowerCase();
-    return haystack.includes(state.query);
-  });
+  return filterSongs(state.songs, state.query);
 }
 
 function getSelectedSong() {

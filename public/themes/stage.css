@@ -95,6 +95,8 @@ textarea:focus {
 }
 
 .import-form button,
+.playlist-create button,
+.playlist-rename button[type="submit"],
 .dialog-actions button[type="submit"],
 .autoscroll-controls button {
   color: #181308;
@@ -104,6 +106,8 @@ textarea:focus {
 }
 
 .import-form button:hover:not(:disabled),
+.playlist-create button:hover:not(:disabled),
+.playlist-rename button[type="submit"]:hover:not(:disabled),
 .dialog-actions button[type="submit"]:hover:not(:disabled),
 .autoscroll-controls button:hover:not(:disabled) {
   background: var(--accent-strong);

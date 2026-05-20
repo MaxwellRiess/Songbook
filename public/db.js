@@ -1,9 +1,11 @@
 import { normalizeSong } from "./song-model.js";
+import { normalizePlaylist } from "./library-model.js";
 
 export const DB_NAME = "songbook";
-export const DB_VERSION = 2;
+export const DB_VERSION = 3;
 export const SONG_STORE = "songs";
 export const DELETED_SONG_STORE = "deletedSongs";
+export const PLAYLIST_STORE = "playlists";
 
 export async function getStoredSongs() {
   const db = await openSongbookDb();
@@ -11,7 +13,7 @@ export async function getStoredSongs() {
     const transaction = db.transaction(SONG_STORE, "readonly");
     const request = transaction.objectStore(SONG_STORE).getAll();
     request.onsuccess = () => {
-      const songs = request.result || [];
+      const songs = (request.result || []).map(normalizeSong);
       songs.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
       resolve(songs);
     };
@@ -83,6 +85,54 @@ export async function removeDeletedSong(songId) {
   });
 }
 
+export async function getStoredPlaylists() {
+  const db = await openSongbookDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(PLAYLIST_STORE, "readonly");
+    const request = transaction.objectStore(PLAYLIST_STORE).getAll();
+    request.onsuccess = () => {
+      const playlists = (request.result || []).map(normalizePlaylist);
+      playlists.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+      resolve(playlists);
+    };
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function upsertStoredPlaylist(playlist) {
+  const db = await openSongbookDb();
+  const normalized = normalizePlaylist(playlist);
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(PLAYLIST_STORE, "readwrite");
+    transaction.objectStore(PLAYLIST_STORE).put(normalized);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+  return normalized;
+}
+
+export async function saveStoredPlaylists(playlists) {
+  const db = await openSongbookDb();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(PLAYLIST_STORE, "readwrite");
+    const store = transaction.objectStore(PLAYLIST_STORE);
+    store.clear();
+    playlists.map(normalizePlaylist).forEach((playlist) => store.put(playlist));
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+export async function deleteStoredPlaylist(playlistId) {
+  const db = await openSongbookDb();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(PLAYLIST_STORE, "readwrite");
+    transaction.objectStore(PLAYLIST_STORE).delete(playlistId);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
 export function openSongbookDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -97,9 +147,12 @@ export function openSongbookDb() {
         const store = db.createObjectStore(DELETED_SONG_STORE, { keyPath: "id" });
         store.createIndex("deletedAt", "deletedAt");
       }
+      if (!db.objectStoreNames.contains(PLAYLIST_STORE)) {
+        const store = db.createObjectStore(PLAYLIST_STORE, { keyPath: "id" });
+        store.createIndex("updatedAt", "updatedAt");
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
 }
-

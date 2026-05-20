@@ -13,7 +13,8 @@ export function normalizeSong(input) {
     sourceUrl: String(input.sourceUrl || "").trim(),
     rawContent: String(input.rawContent || "").replace(/\r\n?/g, "\n").trim(),
     createdAt: input.createdAt || timestamp,
-    updatedAt: input.updatedAt || timestamp
+    updatedAt: input.updatedAt || timestamp,
+    lastOpenedAt: input.lastOpenedAt || ""
   };
 }
 
@@ -56,4 +57,3 @@ export function buildMetaPills(song) {
     return pill;
   });
 }
-
