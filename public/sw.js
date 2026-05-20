@@ -1,4 +1,4 @@
-const CACHE_NAME = "songbook-v7";
+const CACHE_NAME = "songbook-v8";
 const APP_SHELL = [
   "./",
   "index.html",
@@ -12,7 +12,10 @@ const APP_SHELL = [
   "song-renderer.js",
   "song-sync.js",
   "manifest.webmanifest",
-  "icon.svg",
+  "icon-192.png",
+  "icon-512.png",
+  "icon-1024.png",
+  "apple-touch-icon.png",
   "themes/analog.css",
   "themes/editorial.css",
   "themes/stage.css",
