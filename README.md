@@ -84,7 +84,7 @@ The extension first tries to read Ultimate Guitar's embedded page data. If that 
 
 ## Supabase Sync
 
-The app can sync songs to a Supabase project using email magic-link sign-in. IndexedDB storage still works without Supabase.
+The app can sync songs and playlists to a Supabase project using email magic-link sign-in. IndexedDB storage still works without Supabase.
 
 Set up Supabase:
 
@@ -104,7 +104,7 @@ Use sync:
 6. Open the magic link in the same browser
 7. Click **Sync**
 
-The table uses Row Level Security policies so signed-in users can only read and write their own songs.
+The tables use Row Level Security policies so signed-in users can only read and write their own songs and playlists.
 
 The Supabase anon key is safe to use in the browser when Row Level Security is enabled. Do not use a service-role key in the app.
 

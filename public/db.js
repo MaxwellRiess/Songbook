@@ -2,10 +2,11 @@ import { normalizeSong } from "./song-model.js";
 import { normalizePlaylist } from "./library-model.js";
 
 export const DB_NAME = "songbook";
-export const DB_VERSION = 3;
+export const DB_VERSION = 4;
 export const SONG_STORE = "songs";
 export const DELETED_SONG_STORE = "deletedSongs";
 export const PLAYLIST_STORE = "playlists";
+export const DELETED_PLAYLIST_STORE = "deletedPlaylists";
 
 export async function getStoredSongs() {
   const db = await openSongbookDb();
@@ -133,6 +134,36 @@ export async function deleteStoredPlaylist(playlistId) {
   });
 }
 
+export async function getDeletedPlaylists() {
+  const db = await openSongbookDb();
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(DELETED_PLAYLIST_STORE, "readonly");
+    const request = transaction.objectStore(DELETED_PLAYLIST_STORE).getAll();
+    request.onsuccess = () => resolve(request.result || []);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+export async function upsertDeletedPlaylist(playlistId, deletedAt = new Date().toISOString()) {
+  const db = await openSongbookDb();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(DELETED_PLAYLIST_STORE, "readwrite");
+    transaction.objectStore(DELETED_PLAYLIST_STORE).put({ id: playlistId, deletedAt });
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+export async function removeDeletedPlaylist(playlistId) {
+  const db = await openSongbookDb();
+  await new Promise((resolve, reject) => {
+    const transaction = db.transaction(DELETED_PLAYLIST_STORE, "readwrite");
+    transaction.objectStore(DELETED_PLAYLIST_STORE).delete(playlistId);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
 export function openSongbookDb() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -150,6 +181,10 @@ export function openSongbookDb() {
       if (!db.objectStoreNames.contains(PLAYLIST_STORE)) {
         const store = db.createObjectStore(PLAYLIST_STORE, { keyPath: "id" });
         store.createIndex("updatedAt", "updatedAt");
+      }
+      if (!db.objectStoreNames.contains(DELETED_PLAYLIST_STORE)) {
+        const store = db.createObjectStore(DELETED_PLAYLIST_STORE, { keyPath: "id" });
+        store.createIndex("deletedAt", "deletedAt");
       }
     };
     request.onsuccess = () => resolve(request.result);

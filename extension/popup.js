@@ -143,10 +143,11 @@ function waitForTabComplete(tabId) {
 
 function importSongIntoSongbookPage(song) {
   const DB_NAME = "songbook";
-  const DB_VERSION = 3;
+  const DB_VERSION = 4;
   const SONG_STORE = "songs";
   const DELETED_SONG_STORE = "deletedSongs";
   const PLAYLIST_STORE = "playlists";
+  const DELETED_PLAYLIST_STORE = "deletedPlaylists";
 
   const normalizedSong = normalizeSong(song);
 
@@ -179,6 +180,10 @@ function importSongIntoSongbookPage(song) {
         if (!db.objectStoreNames.contains(PLAYLIST_STORE)) {
           const store = db.createObjectStore(PLAYLIST_STORE, { keyPath: "id" });
           store.createIndex("updatedAt", "updatedAt");
+        }
+        if (!db.objectStoreNames.contains(DELETED_PLAYLIST_STORE)) {
+          const store = db.createObjectStore(DELETED_PLAYLIST_STORE, { keyPath: "id" });
+          store.createIndex("deletedAt", "deletedAt");
         }
       };
       request.onsuccess = () => resolve(request.result);

@@ -2,12 +2,15 @@ import { createLibraryBackup, mergeBackupPlaylists, mergeBackupSongs, parseLibra
 import {
   deleteStoredPlaylist,
   deleteStoredSong,
+  getDeletedPlaylists,
   getDeletedSongs,
   getStoredPlaylists,
   getStoredSongs,
+  removeDeletedPlaylist,
   removeDeletedSong,
   saveStoredPlaylists,
   saveStoredSongs,
+  upsertDeletedPlaylist,
   upsertDeletedSong,
   upsertStoredPlaylist,
   upsertStoredSong
@@ -23,7 +26,7 @@ import {
   sortRecentSongs
 } from "./library-model.js";
 import { buildMetaPills, normalizeSong, toPlainChordSheet } from "./song-model.js";
-import { detectSongConflicts, mergeSongs } from "./song-sync.js";
+import { detectSongConflicts, mergePlaylists, mergeSongs } from "./song-sync.js";
 import { renderSheet as buildSheetFragment } from "./song-renderer.js";
 
 const state = {
@@ -664,11 +667,7 @@ async function createPlaylist(name) {
     toast("Enter a playlist name.", true);
     return;
   }
-  const playlist = await upsertStoredPlaylist(normalizePlaylist({ name: trimmedName }));
-  state.playlists = await getStoredPlaylists();
-  state.expandedPlaylistIds.add(playlist.id);
-  renderSongList();
-  renderSelectedSong();
+  await savePlaylist(normalizePlaylist({ name: trimmedName }));
   toast("Created playlist");
 }
 
@@ -678,17 +677,42 @@ async function savePlaylist(playlist) {
   state.expandedPlaylistIds.add(saved.id);
   renderSongList();
   renderSelectedSong();
+  if (canUseSupabase()) {
+    try {
+      await syncPlaylistToSupabase(saved);
+    } catch (error) {
+      updateSyncStatus(error.message || "Playlist sync failed");
+      toast("Saved locally. Playlist sync failed.", true);
+    }
+  }
   return saved;
 }
 
 async function deletePlaylist(playlist) {
   const confirmed = window.confirm(`Delete playlist "${playlist.name}"? Songs will stay in your library.`);
   if (!confirmed) return;
+  await upsertDeletedPlaylist(playlist.id);
   await deleteStoredPlaylist(playlist.id);
   state.expandedPlaylistIds.delete(playlist.id);
   state.playlists = await getStoredPlaylists();
+  await refreshPendingDeleteCount();
   renderSongList();
   renderSelectedSong();
+
+  if (canUseSupabase()) {
+    try {
+      await deletePlaylistFromSupabase(playlist.id);
+      await removeDeletedPlaylist(playlist.id);
+      await refreshPendingDeleteCount();
+      state.lastSyncedAt = new Date().toISOString();
+      updateSyncStatus("Synced");
+    } catch (error) {
+      updateSyncStatus(error.message || "Playlist sync failed");
+      toast("Deleted locally. Remote playlist delete will retry on next sync.", true);
+      return;
+    }
+  }
+
   toast("Deleted playlist");
 }
 
@@ -1086,7 +1110,9 @@ async function syncWithSupabase() {
 
   try {
     await flushPendingDeletesToSupabase();
+    await flushPendingPlaylistDeletesToSupabase();
     const deletedSongs = await getDeletedSongs();
+    const deletedPlaylists = await getDeletedPlaylists();
     const { data, error } = await state.supabaseClient
       .from("songs")
       .select("*")
@@ -1104,6 +1130,17 @@ async function syncWithSupabase() {
       const rows = mergedSongs.map(songToSupabaseRow);
       const { error: upsertError } = await state.supabaseClient.from("songs").upsert(rows, { onConflict: "id" });
       if (upsertError) throw upsertError;
+    }
+
+    const remotePlaylists = await getPlaylistsFromSupabase();
+    const mergedPlaylists = mergePlaylists(state.playlists, remotePlaylists, deletedPlaylists);
+    await saveStoredPlaylists(mergedPlaylists);
+    state.playlists = mergedPlaylists;
+
+    if (mergedPlaylists.length) {
+      const playlistRows = mergedPlaylists.map(playlistToSupabaseRow);
+      const { error: playlistUpsertError } = await state.supabaseClient.from("playlists").upsert(playlistRows, { onConflict: "id" });
+      if (playlistUpsertError) throw formatPlaylistSyncError(playlistUpsertError);
     }
 
     state.lastSyncedAt = new Date().toISOString();
@@ -1128,6 +1165,14 @@ async function syncSongToSupabase(song) {
   updateSyncStatus("Synced");
 }
 
+async function syncPlaylistToSupabase(playlist) {
+  if (!canUseSupabase()) return;
+  const { error } = await state.supabaseClient.from("playlists").upsert(playlistToSupabaseRow(playlist), { onConflict: "id" });
+  if (error) throw formatPlaylistSyncError(error);
+  state.lastSyncedAt = new Date().toISOString();
+  updateSyncStatus("Synced");
+}
+
 async function deleteSongFromSupabase(songId) {
   await deleteSongsFromSupabase([songId]);
 }
@@ -1138,6 +1183,16 @@ async function deleteSongsFromSupabase(songIds) {
   if (error) throw error;
 }
 
+async function deletePlaylistFromSupabase(playlistId) {
+  await deletePlaylistsFromSupabase([playlistId]);
+}
+
+async function deletePlaylistsFromSupabase(playlistIds) {
+  if (!canUseSupabase() || !playlistIds.length) return;
+  const { error } = await state.supabaseClient.from("playlists").delete().in("id", playlistIds);
+  if (error) throw formatPlaylistSyncError(error);
+}
+
 async function flushPendingDeletesToSupabase() {
   const deletedSongs = await getDeletedSongs();
   if (!deletedSongs.length) return;
@@ -1146,12 +1201,21 @@ async function flushPendingDeletesToSupabase() {
   await Promise.all(deletedSongs.map((song) => removeDeletedSong(song.id)));
 }
 
+async function flushPendingPlaylistDeletesToSupabase() {
+  const deletedPlaylists = await getDeletedPlaylists();
+  if (!deletedPlaylists.length) return;
+
+  await deletePlaylistsFromSupabase(deletedPlaylists.map((playlist) => playlist.id));
+  await Promise.all(deletedPlaylists.map((playlist) => removeDeletedPlaylist(playlist.id)));
+}
+
 function canUseSupabase() {
   return Boolean(state.supabaseClient && state.supabaseUser);
 }
 
 async function refreshPendingDeleteCount() {
-  state.pendingDeleteCount = (await getDeletedSongs()).length;
+  const [deletedSongs, deletedPlaylists] = await Promise.all([getDeletedSongs(), getDeletedPlaylists()]);
+  state.pendingDeleteCount = deletedSongs.length + deletedPlaylists.length;
   updateSyncStatus();
 }
 
@@ -1219,6 +1283,15 @@ function preserveLocalOpenTimes(songs, localSongs) {
   }));
 }
 
+async function getPlaylistsFromSupabase() {
+  const { data, error } = await state.supabaseClient
+    .from("playlists")
+    .select("*")
+    .order("updated_at", { ascending: false });
+  if (error) throw formatPlaylistSyncError(error);
+  return (data || []).map(playlistFromSupabaseRow);
+}
+
 function songToSupabaseRow(song) {
   return {
     id: song.id,
@@ -1250,6 +1323,41 @@ function songFromSupabaseRow(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function playlistToSupabaseRow(playlist) {
+  return {
+    id: playlist.id,
+    user_id: state.supabaseUser.id,
+    name: playlist.name,
+    description: playlist.description || "",
+    song_ids: playlist.songIds || [],
+    created_at: playlist.createdAt,
+    updated_at: playlist.updatedAt
+  };
+}
+
+function playlistFromSupabaseRow(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description || "",
+    songIds: row.song_ids || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function formatPlaylistSyncError(error) {
+  if (isMissingPlaylistTableError(error)) {
+    return new Error("Playlist sync needs the latest Supabase schema. Run supabase/schema.sql in your Supabase project.");
+  }
+  return error;
+}
+
+function isMissingPlaylistTableError(error) {
+  const text = [error?.code, error?.message, error?.details, error?.hint].filter(Boolean).join(" ");
+  return /playlists/i.test(text) && /(does not exist|not found|schema cache|PGRST205|42P01)/i.test(text);
 }
 
 function openSongDialog(song = null) {
@@ -1350,6 +1458,14 @@ async function removeSongFromAllPlaylists(songId) {
   const changedPlaylists = updatedPlaylists.filter((playlist, index) => playlist.songIds.length !== state.playlists[index].songIds.length);
   if (!changedPlaylists.length) return;
   await Promise.all(changedPlaylists.map(upsertStoredPlaylist));
+  if (canUseSupabase()) {
+    try {
+      await Promise.all(changedPlaylists.map(syncPlaylistToSupabase));
+    } catch (error) {
+      updateSyncStatus(error.message || "Playlist sync failed");
+      toast("Updated playlists locally. Playlist sync failed.", true);
+    }
+  }
 }
 
 async function copySelectedSong() {
