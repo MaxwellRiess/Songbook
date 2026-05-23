@@ -344,7 +344,8 @@ function renderLibraryViewControls(songs) {
     [
       ["opened", "Recently opened"],
       ["created", "Recently imported"],
-      ["updated", "Recently edited"]
+      ["updated", "Recently edited"],
+      ["title", "Alphabetical"]
     ].forEach(([value, label]) => {
       const option = document.createElement("option");
       option.value = value;
@@ -876,12 +877,7 @@ function stepAutoscroll(timestamp) {
 }
 
 function getAutoscrollTarget() {
-  if (canScroll(elements.viewer)) return elements.viewer;
-  return document.scrollingElement || document.documentElement;
-}
-
-function canScroll(element) {
-  return element.scrollHeight - element.clientHeight > 2;
+  return elements.viewer;
 }
 
 function isAutoscrollAtBottom() {

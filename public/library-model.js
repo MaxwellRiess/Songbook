@@ -1,4 +1,4 @@
-export const RECENT_MODES = ["opened", "created", "updated"];
+export const RECENT_MODES = ["opened", "created", "updated", "title"];
 
 export function normalizePlaylist(input = {}) {
   const timestamp = new Date().toISOString();
@@ -33,9 +33,10 @@ export function filterSongs(songs, query) {
 export function sortRecentSongs(songs, mode = "opened") {
   const recentMode = RECENT_MODES.includes(mode) ? mode : "opened";
   return [...songs].sort((a, b) => {
+    if (recentMode === "title") return compareSongsByTitle(a, b);
     const dateDelta = dateValue(getRecentDate(b, recentMode)) - dateValue(getRecentDate(a, recentMode));
     if (dateDelta !== 0) return dateDelta;
-    return String(a.title || "").localeCompare(String(b.title || ""));
+    return compareSongsByTitle(a, b);
   });
 }
 
@@ -117,6 +118,12 @@ function normalizeArtistKey(value) {
 function dateValue(value) {
   const time = new Date(value || 0).getTime();
   return Number.isFinite(time) ? time : 0;
+}
+
+function compareSongsByTitle(a, b) {
+  const titleDelta = String(a.title || "").localeCompare(String(b.title || ""), undefined, { sensitivity: "base" });
+  if (titleDelta !== 0) return titleDelta;
+  return String(a.artist || "").localeCompare(String(b.artist || ""), undefined, { sensitivity: "base" });
 }
 
 function createId() {

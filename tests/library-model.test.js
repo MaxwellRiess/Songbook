@@ -9,7 +9,7 @@ import {
   sortRecentSongs
 } from "../public/library-model.js";
 
-test("sortRecentSongs supports opened, imported, and edited ordering", () => {
+test("sortRecentSongs supports opened, imported, edited, and alphabetical ordering", () => {
   const songs = [
     {
       id: "old-opened",
@@ -37,6 +37,7 @@ test("sortRecentSongs supports opened, imported, and edited ordering", () => {
   assert.deepEqual(sortRecentSongs(songs, "opened").map((song) => song.id), ["new-opened", "old-opened", "new-created"]);
   assert.deepEqual(sortRecentSongs(songs, "created").map((song) => song.id), ["new-created", "old-opened", "new-opened"]);
   assert.deepEqual(sortRecentSongs(songs, "updated").map((song) => song.id), ["old-opened", "new-opened", "new-created"]);
+  assert.deepEqual(sortRecentSongs(songs, "title").map((song) => song.id), ["new-opened", "old-opened", "new-created"]);
 });
 
 test("groupSongsByArtist folds spacing and casing while sorting songs by title", () => {
