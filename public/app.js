@@ -420,10 +420,13 @@ function renderArtistList(songs) {
     const header = document.createElement("button");
     header.className = "library-group-header";
     header.type = "button";
+    header.dataset.artistKey = group.key;
     header.setAttribute("aria-expanded", String(state.expandedArtistKeys.has(group.key)));
     header.addEventListener("click", () => {
+      const anchorTop = header.getBoundingClientRect().top;
       toggleSetValue(state.expandedArtistKeys, group.key);
       renderSongList();
+      restoreSongListAnchor(`[data-artist-key="${CSS.escape(group.key)}"]`, anchorTop);
     });
 
     const label = document.createElement("strong");
@@ -660,6 +663,12 @@ function toggleSetValue(set, value) {
   } else {
     set.add(value);
   }
+}
+
+function restoreSongListAnchor(selector, previousTop) {
+  const anchor = elements.songList.querySelector(selector);
+  if (!anchor) return;
+  elements.songList.scrollTop += anchor.getBoundingClientRect().top - previousTop;
 }
 
 async function createPlaylist(name) {
