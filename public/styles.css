@@ -395,9 +395,10 @@ textarea:focus {
 .song-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  align-content: start;
+  grid-template-rows: auto auto;
+  align-content: center;
   justify-items: stretch;
-  gap: 4px;
+  row-gap: 8px;
   width: 100%;
   min-width: 0;
   height: auto;
@@ -410,8 +411,11 @@ textarea:focus {
 
 .song-row strong,
 .song-row span {
+  display: block;
   min-width: 0;
   max-width: 100%;
+  line-height: 1.25;
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 
