@@ -587,6 +587,7 @@ function createSongRow(song) {
   const button = document.createElement("button");
   button.className = `song-row${song.id === state.selectedId ? " active" : ""}`;
   button.type = "button";
+  button.dataset.songId = song.id;
   button.addEventListener("click", () => selectSong(song.id));
 
   const title = document.createElement("strong");
@@ -640,6 +641,9 @@ function createSmallActionButton(text, label, handler) {
 async function selectSong(songId) {
   const song = state.songs.find((candidate) => candidate.id === songId);
   if (!song) return;
+  const shouldRestoreListPosition = state.libraryView !== "recent" || state.recentMode === "title";
+  const selectedRow = shouldRestoreListPosition ? elements.songList.querySelector(`[data-song-id="${CSS.escape(song.id)}"]`) : null;
+  const selectedRowTop = selectedRow?.getBoundingClientRect().top ?? null;
   state.selectedId = song.id;
   state.playlistMenuOpen = false;
   state.transpose = 0;
@@ -649,6 +653,9 @@ async function selectSong(songId) {
   state.songs = state.songs.map((candidate) => candidate.id === openedSong.id ? openedSong : candidate);
   if (isMobileViewport()) setSidebarCollapsed(true);
   render();
+  if (selectedRowTop !== null) {
+    restoreSongListAnchor(`[data-song-id="${CSS.escape(song.id)}"]`, selectedRowTop);
+  }
 }
 
 function setLibraryView(view) {
