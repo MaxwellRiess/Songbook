@@ -28,6 +28,7 @@ import {
 import { buildMetaPills, normalizeSong, toPlainChordSheet } from "./song-model.js";
 import { detectSongConflicts, mergePlaylists, mergeSongs } from "./song-sync.js";
 import { renderSheet as buildSheetFragment } from "./song-renderer.js";
+import { initFollowMode } from "./follow-mode.js";
 
 const state = {
   songs: [],
@@ -156,6 +157,11 @@ if (clippedSong) {
   toast(clippedSongSyncFailed ? "Clipped song imported locally. Sync failed." : "Clipped song imported", clippedSongSyncFailed);
 }
 registerServiceWorker();
+initFollowMode({
+  viewer: elements.viewer,
+  getSelectedSong,
+  onBeforeStart: stopAutoscroll
+});
 
 async function loadLibrary() {
   state.songs = await getStoredSongs();
