@@ -78,6 +78,7 @@ const elements = {
   songTitle: document.querySelector("#songTitle"),
   songMeta: document.querySelector("#songMeta"),
   viewer: document.querySelector("#viewer"),
+  songPanel: document.querySelector(".song-panel"),
   headerPlaylistMenuButton: document.querySelector("#headerPlaylistMenuButton"),
   headerPlaylistMenu: document.querySelector("#headerPlaylistMenu"),
   editButton: document.querySelector("#editButton"),
@@ -113,7 +114,9 @@ const elements = {
   supabaseUrlInput: document.querySelector("#supabaseUrlInput"),
   supabaseAnonKeyInput: document.querySelector("#supabaseAnonKeyInput"),
   syncEmailInput: document.querySelector("#syncEmailInput"),
+  syncCodeInput: document.querySelector("#syncCodeInput"),
   sendMagicLinkButton: document.querySelector("#sendMagicLinkButton"),
+  verifyCodeButton: document.querySelector("#verifyCodeButton"),
   signOutButton: document.querySelector("#signOutButton"),
   toast: document.querySelector("#toast")
 };
@@ -213,6 +216,7 @@ function bindEvents() {
   elements.backupFileInput.addEventListener("change", importLibraryBackup);
   elements.closeSyncDialogButton.addEventListener("click", () => elements.syncDialog.close());
   elements.sendMagicLinkButton.addEventListener("click", sendMagicLink);
+  elements.verifyCodeButton.addEventListener("click", verifyMagicCode);
   elements.signOutButton.addEventListener("click", signOutOfSupabase);
   elements.closeDialogButton.addEventListener("click", () => elements.dialog.close());
   elements.cancelButton.addEventListener("click", () => elements.dialog.close());
@@ -266,6 +270,7 @@ function bindEvents() {
     if (state.autoscrollActive && isAutoscrollAtBottom()) {
       stopAutoscroll();
     }
+    updateCondensedHeader();
   });
 
   window.addEventListener("scroll", () => {
@@ -753,6 +758,8 @@ async function renamePlaylist(playlist, nextName) {
 function renderSelectedSong() {
   const song = getSelectedSong();
   const hasSong = Boolean(song);
+  // A freshly rendered sheet starts scrolled to the top, so expand the header.
+  elements.songPanel.classList.remove("is-condensed");
   renderHeaderPlaylistPicker(song);
   elements.editButton.disabled = !hasSong;
   elements.deleteButton.disabled = !hasSong;
@@ -900,6 +907,19 @@ function stepAutoscroll(timestamp) {
 
 function getAutoscrollTarget() {
   return elements.viewer;
+}
+
+// Collapse the header and toolbar into a slim bar once the sheet is scrolled.
+// Hysteresis (condense past 48px, expand under 12px) avoids flicker at the edge.
+// The CSS only reacts on mobile, so this is a no-op on desktop.
+function updateCondensedHeader() {
+  const condensed = elements.songPanel.classList.contains("is-condensed");
+  const scrollTop = elements.viewer.scrollTop;
+  if (!condensed && scrollTop > 48) {
+    elements.songPanel.classList.add("is-condensed");
+  } else if (condensed && scrollTop < 12) {
+    elements.songPanel.classList.remove("is-condensed");
+  }
 }
 
 function isAutoscrollAtBottom() {
@@ -1106,7 +1126,33 @@ async function sendMagicLink() {
     return;
   }
 
-  toast("Magic link sent. Open it in this browser.");
+  toast("Code sent. Enter the 6-digit code from the email below.");
+}
+
+async function verifyMagicCode() {
+  if (!state.supabaseClient) {
+    toast("Save your Supabase settings first.", true);
+    return;
+  }
+
+  const email = elements.syncEmailInput.value.trim();
+  const token = elements.syncCodeInput.value.trim();
+  if (!email || !token) {
+    toast("Enter your email and the code from the email.", true);
+    return;
+  }
+
+  // Verifying the code creates the session directly in this context, so an
+  // installed PWA signs in without depending on the email link opening here.
+  const { error } = await state.supabaseClient.auth.verifyOtp({ email, token, type: "email" });
+  if (error) {
+    toast(error.message, true);
+    return;
+  }
+
+  elements.syncCodeInput.value = "";
+  // onAuthStateChange picks up the new session and triggers the sync.
+  toast("Signed in");
 }
 
 async function signOutOfSupabase() {

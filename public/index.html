@@ -217,11 +217,16 @@
             <span>Email</span>
             <input id="syncEmailInput" type="email" autocomplete="email">
           </label>
+          <label>
+            <span>Sign-in code</span>
+            <input id="syncCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code from email">
+          </label>
         </div>
 
         <div class="dialog-actions">
           <button id="signOutButton" type="button">Sign out</button>
-          <button id="sendMagicLinkButton" type="button">Send magic link</button>
+          <button id="sendMagicLinkButton" type="button">Send code</button>
+          <button id="verifyCodeButton" type="button">Verify code</button>
           <button type="submit">Save settings</button>
         </div>
       </form>

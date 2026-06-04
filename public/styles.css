@@ -1069,10 +1069,64 @@ textarea {
     flex-basis: 100%;
   }
 
+  /* Tighter baseline header/toolbar on mobile. */
+  .song-header {
+    padding-top: 12px;
+    padding-bottom: 12px;
+    transition: padding 180ms ease;
+  }
+
+  #songTitle {
+    margin: 0;
+    font-size: 19px;
+    transition: font-size 180ms ease;
+  }
+
   .toolbar {
     flex-wrap: wrap;
     align-items: end;
     gap: 12px 18px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    overflow: hidden;
+    max-height: 160px;
+    transition: max-height 200ms ease, padding 200ms ease, opacity 160ms ease;
+  }
+
+  /* Collapsed state: only the menu button and song title remain. */
+  .song-panel.is-condensed .song-header {
+    flex-wrap: nowrap;
+    align-items: center;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  .song-panel.is-condensed .song-title-group {
+    order: 2;
+    flex: 1 1 auto;
+    flex-basis: auto;
+    min-width: 0;
+  }
+
+  .song-panel.is-condensed .eyebrow,
+  .song-panel.is-condensed .song-meta,
+  .song-panel.is-condensed .header-actions {
+    display: none;
+  }
+
+  .song-panel.is-condensed #songTitle {
+    font-size: 16px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .song-panel.is-condensed .toolbar {
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    opacity: 0;
+    border-bottom-width: 0;
   }
 
   .form-grid {
