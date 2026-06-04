@@ -243,6 +243,13 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
       type: "module"
     });
 
+    // If the worker itself dies (e.g. out of memory), stop cleanly instead of
+    // leaving follow mode half-running.
+    followState.worker.onerror = () => {
+      setStatus("Speech engine stopped (likely low memory). Follow mode off.");
+      stop();
+    };
+
     followState.worker.onmessage = (event) => {
       const message = event.data;
       if (message.type === "status") {
@@ -260,7 +267,16 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
       }
     };
 
-    followState.worker.postMessage({ type: "load", model: MODEL });
+    // Mobile gets the light, stable path: WASM + 8-bit quantisation. This uses
+    // far less memory than WebGPU/fp16 and avoids iOS Safari killing the page or
+    // crashing the GPU process. Desktop keeps the faster WebGPU path.
+    const mobile = isMobileDevice();
+    followState.worker.postMessage({
+      type: "load",
+      model: MODEL,
+      device: mobile ? "wasm" : "webgpu",
+      dtype: mobile ? "q8" : "fp16"
+    });
   }
 
   function stepTranscribe() {
@@ -429,6 +445,15 @@ function rms(samples) {
   let sum = 0;
   for (let i = 0; i < samples.length; i += 1) sum += samples[i] * samples[i];
   return Math.sqrt(sum / samples.length);
+}
+
+// Treat phones/tablets as memory-constrained. Covers iPadOS, which reports a
+// desktop user agent but still has mobile memory limits, via touch points.
+function isMobileDevice() {
+  const ua = navigator.userAgent || "";
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return true;
+  const touchMac = navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
+  return touchMac || window.matchMedia("(max-width: 820px)").matches;
 }
 
 // Linear-interpolation resample to 16 kHz, which is what Whisper expects. Mobile

@@ -14,19 +14,22 @@ env.allowLocalModels = false;
 let transcriber = null;
 let activeDevice = "";
 
-async function load(model) {
-  postMessage({ type: "status", text: `Loading ${model}...` });
+async function load(model, device, dtype) {
+  postMessage({ type: "status", text: `Loading ${model} (${device}/${dtype})...` });
 
-  // Prefer WebGPU; fall back to WASM so the prototype still runs without it.
+  // Try the requested device/precision, then fall back to the lightest stable
+  // option (WASM + q8). On mobile the caller asks for WASM/q8 directly, which
+  // uses far less memory than WebGPU/fp32 and avoids iOS GPU-process crashes.
   try {
+    transcriber = await pipeline("automatic-speech-recognition", model, { device, dtype });
+    activeDevice = device;
+  } catch (primaryError) {
+    if (device === "wasm" && dtype === "q8") throw primaryError;
+    postMessage({ type: "status", text: "Falling back to WASM/q8 (lighter)..." });
     transcriber = await pipeline("automatic-speech-recognition", model, {
-      device: "webgpu",
-      dtype: "fp32"
+      device: "wasm",
+      dtype: "q8"
     });
-    activeDevice = "webgpu";
-  } catch (webgpuError) {
-    postMessage({ type: "status", text: "WebGPU unavailable, using WASM (slower)..." });
-    transcriber = await pipeline("automatic-speech-recognition", model);
     activeDevice = "wasm";
   }
 
@@ -38,7 +41,7 @@ onmessage = async (event) => {
 
   if (message.type === "load") {
     try {
-      await load(message.model);
+      await load(message.model, message.device || "wasm", message.dtype || "q8");
     } catch (error) {
       postMessage({ type: "error", text: `Model load failed: ${String(error)}` });
     }
