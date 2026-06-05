@@ -275,7 +275,7 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
       type: "load",
       model: MODEL,
       device: mobile ? "wasm" : "webgpu",
-      dtype: mobile ? "q8" : "fp16"
+      dtype: mobile ? "q8" : "fp32"
     });
   }
 
@@ -399,10 +399,27 @@ export function tokenize(text) {
     .filter((word) => word.length > 1);
 }
 
-// Score nearby lines against the heard words, bias forward, and commit only when
-// the best line clears the overlap floor and beats the runner-up by a margin.
+// Inverse document frequency over the song's lines: a word in few lines is
+// distinctive (high weight), a word in many lines ("the", "and") is near
+// useless (low weight). This sharpens which line a match points to, and means
+// filler words no longer count the same as content words.
+export function buildIdf(anchors) {
+  const documentFrequency = new Map();
+  for (const anchor of anchors) {
+    for (const token of new Set(anchor.tokens)) {
+      documentFrequency.set(token, (documentFrequency.get(token) || 0) + 1);
+    }
+  }
+  const total = anchors.length || 1;
+  return (token) => Math.log(1 + total / ((documentFrequency.get(token) || 0) + 1));
+}
+
+// Score nearby lines against the heard words, weighting distinctive words more,
+// bias forward, and commit only when the best line clears the overlap floor and
+// beats the runner-up by a margin.
 export function matchPosition(anchors, currentIndex, heard) {
   const heardSet = new Set(heard);
+  const idf = buildIdf(anchors);
   const start = Math.max(0, currentIndex < 0 ? 0 : currentIndex - LOOKBACK);
   const end = Math.min(
     anchors.length - 1,
@@ -412,20 +429,24 @@ export function matchPosition(anchors, currentIndex, heard) {
   const candidates = [];
   for (let index = start; index <= end; index += 1) {
     const anchor = anchors[index];
-    let overlap = 0;
+    let overlap = 0; // raw count of matched words (used for the commit floor)
+    let weighted = 0; // distinctiveness-weighted match strength (used for ranking)
     for (const token of new Set(anchor.tokens)) {
-      if (heardSet.has(token)) overlap += 1;
+      if (heardSet.has(token)) {
+        overlap += 1;
+        weighted += idf(token);
+      }
     }
     // Forward prior: reward staying or stepping forward one, penalise jumps and
-    // any backward move.
+    // any backward move. Scaled to roughly one content word of evidence.
     let prior = 0;
     if (currentIndex >= 0) {
       const step = index - currentIndex;
-      if (step < 0) prior = -2;
-      else if (step === 0 || step === 1) prior = 0.5;
-      else prior = -0.4 * (step - 1);
+      if (step < 0) prior = -4;
+      else if (step === 0 || step === 1) prior = 1;
+      else prior = -0.8 * (step - 1);
     }
-    candidates.push({ index, score: overlap + prior, overlap, text: anchor.text });
+    candidates.push({ index, score: weighted + prior, overlap, weighted, text: anchor.text });
   }
 
   candidates.sort((a, b) => b.score - a.score);
@@ -489,9 +510,9 @@ function buildUi() {
   else document.body.append(toggle);
 
   const panel = document.createElement("div");
-  panel.className = "follow-debug hidden";
+  panel.className = "follow-debug hidden collapsed";
   panel.innerHTML = `
-    <button type="button" class="follow-debug-head" data-collapse aria-expanded="true">
+    <button type="button" class="follow-debug-head" data-collapse aria-expanded="false">
       <span>Follow mode (debug)</span><span class="follow-collapse-icon">&#9660;</span>
     </button>
     <div class="follow-debug-body">
@@ -526,7 +547,7 @@ function injectStyles() {
     .follow-toggle.is-active { outline: 2px solid currentColor; }
     .follow-current-line { background: rgba(255, 215, 0, 0.22); border-radius: 4px; }
     .follow-debug {
-      position: fixed; right: 12px; bottom: 12px; width: 320px; z-index: 9999;
+      position: fixed; left: 12px; bottom: 84px; width: 300px; z-index: 30;
       background: rgba(20, 20, 24, 0.92); color: #f4f4f5; font: 12px/1.4 ui-monospace, monospace;
       padding: 10px 12px; border-radius: 10px; box-shadow: 0 6px 24px rgba(0,0,0,0.4);
     }
