@@ -12,7 +12,8 @@
 // and watches the viewer for song changes. It does not modify the renderer or
 // the existing autoscroll.
 
-const MODEL = "Xenova/whisper-tiny.en"; // small + fast; swap to whisper-base.en for accuracy
+const MODEL_DESKTOP = "Xenova/whisper-base.en"; // more accurate; desktop can afford it
+const MODEL_MOBILE = "Xenova/whisper-tiny.en"; // smaller + lighter for memory-limited phones
 const SAMPLE_RATE = 16000;
 const WINDOW_SECONDS = 4; // audio sent to Whisper each step (shorter = fresher, less lag)
 const STEP_MS = 1000; // how often we transcribe
@@ -47,8 +48,18 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     ringWritten: 0,
     stepTimer: null,
     requestId: 0,
-    wakeLock: null
+    wakeLock: null,
+    // Live-tunable knobs, seeded from the defaults. Exposed in the debug panel.
+    tuning: {
+      windowSeconds: WINDOW_SECONDS,
+      stepMs: STEP_MS,
+      heardTail: HEARD_TAIL,
+      minOverlap: MIN_OVERLAP,
+      margin: MARGIN
+    }
   };
+
+  wireTuningControls(ui, followState, restartStepTimer);
 
   ui.toggle.addEventListener("click", () => {
     if (followState.active) {
@@ -97,12 +108,20 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
       await startAudio();
       startWorker();
       await requestWakeLock();
-      followState.stepTimer = window.setInterval(stepTranscribe, STEP_MS);
+      restartStepTimer();
       setStatus("Listening...");
     } catch (error) {
       setStatus(`Could not start: ${error.message || error}`);
       stop();
     }
+  }
+
+  // (Re)start the transcription loop at the current step interval. Called on
+  // start and whenever the step-rate knob changes.
+  function restartStepTimer() {
+    if (followState.stepTimer) window.clearInterval(followState.stepTimer);
+    if (!followState.active) return;
+    followState.stepTimer = window.setInterval(stepTranscribe, followState.tuning.stepMs);
   }
 
   function stop() {
@@ -273,7 +292,7 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     const mobile = isMobileDevice();
     followState.worker.postMessage({
       type: "load",
-      model: MODEL,
+      model: mobile ? MODEL_MOBILE : MODEL_DESKTOP,
       device: mobile ? "wasm" : "webgpu",
       dtype: mobile ? "q8" : "fp32"
     });
@@ -282,7 +301,7 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
   function stepTranscribe() {
     if (!followState.active || !followState.ready || followState.workerBusy) return;
 
-    const audio = readWindow(WINDOW_SECONDS);
+    const audio = readWindow(followState.tuning.windowSeconds);
     if (audio.length < SAMPLE_RATE) return; // wait for at least a second of audio
 
     if (rms(audio) < RMS_FLOOR) {
@@ -305,8 +324,11 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     // Match only the most recent words. Whisper's window holds a line or two of
     // history; using the tail makes the lock reflect where the singer is now
     // rather than where they were when the window opened.
-    const recent = heard.slice(-HEARD_TAIL);
-    const result = matchPosition(followState.anchors, followState.currentIndex, recent);
+    const recent = heard.slice(-followState.tuning.heardTail);
+    const result = matchPosition(followState.anchors, followState.currentIndex, recent, {
+      minOverlap: followState.tuning.minOverlap,
+      margin: followState.tuning.margin
+    });
     renderCandidates(result.candidates);
 
     if (result.committedIndex !== -1 && result.committedIndex !== followState.currentIndex) {
@@ -415,9 +437,12 @@ export function buildIdf(anchors) {
 }
 
 // Score nearby lines against the heard words, weighting distinctive words more,
-// bias forward, and commit only when the best line clears the overlap floor and
-// beats the runner-up by a margin.
-export function matchPosition(anchors, currentIndex, heard) {
+// tolerating Whisper mishearings via fuzzy matches, biasing forward, and
+// committing only when the best line clears the overlap floor and beats the
+// runner-up by a margin.
+export function matchPosition(anchors, currentIndex, heard, options = {}) {
+  const minOverlap = options.minOverlap ?? MIN_OVERLAP;
+  const margin = options.margin ?? MARGIN;
   const heardSet = new Set(heard);
   const idf = buildIdf(anchors);
   const start = Math.max(0, currentIndex < 0 ? 0 : currentIndex - LOOKBACK);
@@ -432,9 +457,10 @@ export function matchPosition(anchors, currentIndex, heard) {
     let overlap = 0; // raw count of matched words (used for the commit floor)
     let weighted = 0; // distinctiveness-weighted match strength (used for ranking)
     for (const token of new Set(anchor.tokens)) {
-      if (heardSet.has(token)) {
+      const match = matchWord(token, heardSet, heard);
+      if (match.matched) {
         overlap += 1;
-        weighted += idf(token);
+        weighted += idf(token) * match.weight; // exact = full, fuzzy = discounted
       }
     }
     // Forward prior: reward staying or stepping forward one, penalise jumps and
@@ -454,18 +480,74 @@ export function matchPosition(anchors, currentIndex, heard) {
   const second = candidates[1];
 
   let committedIndex = -1;
-  if (best && best.overlap >= MIN_OVERLAP) {
-    const beatsRunnerUp = !second || best.score - second.score >= MARGIN;
+  if (best && best.overlap >= minOverlap) {
+    const beatsRunnerUp = !second || best.score - second.score >= margin;
     if (beatsRunnerUp) committedIndex = best.index;
   }
 
   return { committedIndex, candidates };
 }
 
+// Does a line word match anything heard? Exact first, then a capped edit-distance
+// check so Whisper mishearings ("canal" vs "canel", "gasworks" vs "gas works")
+// still count, at a discount.
+export function matchWord(token, heardSet, heardList) {
+  if (heardSet.has(token)) return { matched: true, weight: 1 };
+  const maxDistance = token.length <= 4 ? 1 : 2;
+  for (const heardWord of heardList) {
+    if (Math.abs(heardWord.length - token.length) > maxDistance) continue;
+    if (boundedLevenshtein(token, heardWord, maxDistance) <= maxDistance) {
+      return { matched: true, weight: 0.6 };
+    }
+  }
+  return { matched: false, weight: 0 };
+}
+
+// Levenshtein distance with an early exit once the best possible score on a row
+// exceeds the cap. Returns cap + 1 when the true distance is beyond the cap.
+export function boundedLevenshtein(a, b, cap) {
+  if (Math.abs(a.length - b.length) > cap) return cap + 1;
+  let previous = new Array(b.length + 1);
+  for (let j = 0; j <= b.length; j += 1) previous[j] = j;
+  for (let i = 1; i <= a.length; i += 1) {
+    const current = [i];
+    let rowBest = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost);
+      if (current[j] < rowBest) rowBest = current[j];
+    }
+    if (rowBest > cap) return cap + 1;
+    previous = current;
+  }
+  return previous[b.length];
+}
+
 function rms(samples) {
   let sum = 0;
   for (let i = 0; i < samples.length; i += 1) sum += samples[i] * samples[i];
   return Math.sqrt(sum / samples.length);
+}
+
+// Hook the debug-panel sliders up to the live tuning object. Changing the step
+// rate restarts the transcription timer; the rest take effect on the next cycle.
+function wireTuningControls(ui, followState, onStepChange) {
+  const format = (key, value) => {
+    if (key === "windowSeconds") return `${value.toFixed(1)}s`;
+    if (key === "stepMs") return `${value}ms`;
+    if (key === "margin") return value.toFixed(1);
+    return String(value);
+  };
+  ui.panel.querySelectorAll("[data-tune]").forEach((input) => {
+    const key = input.dataset.tune;
+    const label = ui.panel.querySelector(`[data-knob="${key}"]`);
+    input.addEventListener("input", () => {
+      const value = Number(input.value);
+      followState.tuning[key] = value;
+      if (label) label.textContent = format(key, value);
+      if (key === "stepMs") onStepChange();
+    });
+  });
 }
 
 // Treat phones/tablets as memory-constrained. Covers iPadOS, which reports a
@@ -520,6 +602,19 @@ function buildUi() {
       <div class="follow-row"><span>Anchors</span><div data-anchor-count>0 lyric lines</div></div>
       <div class="follow-row"><span>Heard</span><div data-heard>-</div></div>
       <div class="follow-row"><span>Candidates</span><div data-candidates></div></div>
+      <div class="follow-tuning">
+        <div class="follow-tuning-title">Tuning</div>
+        <label class="follow-knob">Window <span data-knob="windowSeconds">4.0s</span>
+          <input type="range" data-tune="windowSeconds" min="2" max="8" step="0.5" value="4"></label>
+        <label class="follow-knob">Step <span data-knob="stepMs">1000ms</span>
+          <input type="range" data-tune="stepMs" min="500" max="2500" step="100" value="1000"></label>
+        <label class="follow-knob">Recent words <span data-knob="heardTail">7</span>
+          <input type="range" data-tune="heardTail" min="3" max="12" step="1" value="7"></label>
+        <label class="follow-knob">Min words <span data-knob="minOverlap">2</span>
+          <input type="range" data-tune="minOverlap" min="1" max="4" step="1" value="2"></label>
+        <label class="follow-knob">Margin <span data-knob="margin">1.0</span>
+          <input type="range" data-tune="margin" min="0" max="4" step="0.5" value="1"></label>
+      </div>
     </div>
   `;
   document.body.append(panel);
@@ -564,6 +659,11 @@ function injectStyles() {
     .follow-row { display: grid; grid-template-columns: 70px 1fr; gap: 6px; margin: 4px 0; }
     .follow-row > span { opacity: 0.6; }
     .follow-candidate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .follow-tuning { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); }
+    .follow-tuning-title { opacity: 0.6; margin-bottom: 4px; }
+    .follow-knob { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px; margin: 3px 0; }
+    .follow-knob input { grid-column: 1 / -1; width: 100%; margin: 0; }
+    .follow-knob span { opacity: 0.85; font-variant-numeric: tabular-nums; }
   `;
   document.head.append(style);
 }
