@@ -12,8 +12,16 @@
 // and watches the viewer for song changes. It does not modify the renderer or
 // the existing autoscroll.
 
-const MODEL_DESKTOP = "Xenova/whisper-base.en"; // more accurate; desktop can afford it
+const MODEL_DESKTOP = "Xenova/whisper-base.en"; // default desktop model
 const MODEL_MOBILE = "Xenova/whisper-tiny.en"; // smaller + lighter for memory-limited phones
+
+// Desktop model options, switchable from the debug panel to compare accuracy
+// versus speed. Bigger = more accurate but slower and a larger one-time download.
+const DESKTOP_MODELS = [
+  { id: "Xenova/whisper-tiny.en", label: "tiny.en (fastest)" },
+  { id: "Xenova/whisper-base.en", label: "base.en (balanced)" },
+  { id: "Xenova/whisper-small.en", label: "small.en (most accurate)" }
+];
 const SAMPLE_RATE = 16000;
 const WINDOW_SECONDS = 4; // audio sent to Whisper each step (shorter = fresher, less lag)
 const STEP_MS = 1000; // how often we transcribe
@@ -49,6 +57,7 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     stepTimer: null,
     requestId: 0,
     wakeLock: null,
+    desktopModel: MODEL_DESKTOP, // active desktop model; switchable in the panel
     // Live-tunable knobs, seeded from the defaults. Exposed in the debug panel.
     tuning: {
       windowSeconds: WINDOW_SECONDS,
@@ -60,6 +69,10 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
   };
 
   wireTuningControls(ui, followState, restartStepTimer);
+
+  ui.modelSelect.addEventListener("change", () => {
+    setDesktopModel(ui.modelSelect.value);
+  });
 
   ui.toggle.addEventListener("click", () => {
     if (followState.active) {
@@ -286,16 +299,33 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
       }
     };
 
-    // Mobile gets the light, stable path: WASM + 8-bit quantisation. This uses
-    // far less memory than WebGPU/fp16 and avoids iOS Safari killing the page or
-    // crashing the GPU process. Desktop keeps the faster WebGPU path.
+    postLoad();
+  }
+
+  // Tell the worker which model/device/precision to load. Mobile gets the light,
+  // stable path (WASM + q8) to avoid iOS memory crashes; desktop uses WebGPU and
+  // the model the user has selected. Used on first start and on model switches.
+  function postLoad() {
+    if (!followState.worker) return;
     const mobile = isMobileDevice();
+    followState.ready = false;
+    followState.workerBusy = false;
     followState.worker.postMessage({
       type: "load",
-      model: mobile ? MODEL_MOBILE : MODEL_DESKTOP,
+      model: mobile ? MODEL_MOBILE : followState.desktopModel,
       device: mobile ? "wasm" : "webgpu",
       dtype: mobile ? "q8" : "fp32"
     });
+  }
+
+  // Switch the desktop model. If the engine is already running, reload it live so
+  // the next transcriptions use the new model.
+  function setDesktopModel(modelId) {
+    followState.desktopModel = modelId;
+    if (followState.worker) {
+      setStatus(`Loading ${modelId}...`);
+      postLoad();
+    }
   }
 
   function stepTranscribe() {
@@ -598,6 +628,11 @@ function buildUi() {
       <span>Follow mode (debug)</span><span class="follow-collapse-icon">&#9660;</span>
     </button>
     <div class="follow-debug-body">
+      <div class="follow-row"><span>Model</span>
+        <select data-model>${DESKTOP_MODELS.map(
+          (m) => `<option value="${m.id}"${m.id === MODEL_DESKTOP ? " selected" : ""}>${m.label}</option>`
+        ).join("")}</select>
+      </div>
       <div class="follow-row"><span>Status</span><div data-status>idle</div></div>
       <div class="follow-row"><span>Anchors</span><div data-anchor-count>0 lyric lines</div></div>
       <div class="follow-row"><span>Heard</span><div data-heard>-</div></div>
@@ -631,7 +666,8 @@ function buildUi() {
     status: panel.querySelector("[data-status]"),
     anchorCount: panel.querySelector("[data-anchor-count]"),
     heard: panel.querySelector("[data-heard]"),
-    candidates: panel.querySelector("[data-candidates]")
+    candidates: panel.querySelector("[data-candidates]"),
+    modelSelect: panel.querySelector("[data-model]")
   };
 }
 
@@ -659,6 +695,11 @@ function injectStyles() {
     .follow-row { display: grid; grid-template-columns: 70px 1fr; gap: 6px; margin: 4px 0; }
     .follow-row > span { opacity: 0.6; }
     .follow-candidate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .follow-debug select {
+      width: 100%; font: inherit; padding: 2px 4px; border-radius: 4px;
+      color: #f4f4f5; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);
+    }
+    .follow-debug select option { color: #111; }
     .follow-tuning { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.15); }
     .follow-tuning-title { opacity: 0.6; margin-bottom: 4px; }
     .follow-knob { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 6px; margin: 3px 0; }
