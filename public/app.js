@@ -29,6 +29,7 @@ import { buildMetaPills, normalizeSong, toPlainChordSheet } from "./song-model.j
 import { detectSongConflicts, mergePlaylists, mergeSongs } from "./song-sync.js";
 import { renderSheet as buildSheetFragment } from "./song-renderer.js";
 import { initFollowMode } from "./follow-mode.js";
+import { closeChordPopover, initChordPopover } from "./chord-popover.js";
 
 const state = {
   songs: [],
@@ -165,6 +166,7 @@ initFollowMode({
   getSelectedSong,
   onBeforeStart: stopAutoscroll
 });
+initChordPopover(elements.viewer);
 
 async function loadLibrary() {
   state.songs = await getStoredSongs();
@@ -855,6 +857,7 @@ function closeHeaderPlaylistMenu() {
 }
 
 function renderSheet(song) {
+  closeChordPopover();
   elements.viewer.replaceChildren(buildSheetFragment(song, state.transpose));
 }
 

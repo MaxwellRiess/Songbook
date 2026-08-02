@@ -37,7 +37,7 @@ function renderLine(line, transpose) {
   if (isPlainChordLine(cleanedLine)) {
     const chordLine = document.createElement("div");
     chordLine.className = "sheet-line plain-chord-line";
-    chordLine.textContent = transposeChordLine(cleanedLine, transpose);
+    appendChordTokens(chordLine, transposeChordLine(cleanedLine, transpose));
     return chordLine;
   }
 
@@ -59,7 +59,7 @@ function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose) {
 
   const desktopChordLine = document.createElement("div");
   desktopChordLine.className = "plain-chord-line pair-desktop-chords";
-  desktopChordLine.textContent = transposeChordLine(chordLine, transpose);
+  appendChordTokens(desktopChordLine, transposeChordLine(chordLine, transpose));
 
   const desktopLyricLine = document.createElement("div");
   desktopLyricLine.className = "pair-desktop-lyrics";
@@ -75,6 +75,7 @@ function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose) {
     const chord = document.createElement("span");
     chord.className = "mobile-flow-chord";
     chord.textContent = segment.chord || "\u00a0";
+    if (segment.chord) markChordToken(chord, segment.chord);
 
     const lyric = document.createElement("span");
     lyric.className = "mobile-flow-lyric";
@@ -86,6 +87,40 @@ function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose) {
 
   wrapper.append(desktopChordLine, desktopLyricLine, mobileLine);
   return wrapper;
+}
+
+/* Splits a rendered chord line into text and tappable chord spans. Whitespace is
+   emitted verbatim so the monospaced alignment with the lyric line is untouched. */
+function appendChordTokens(container, text) {
+  const tokenRegex = /\S+/g;
+  let cursor = 0;
+  let match;
+
+  while ((match = tokenRegex.exec(text)) !== null) {
+    if (match.index > cursor) container.append(text.slice(cursor, match.index));
+
+    const token = match[0];
+    if (isChordToken(token)) {
+      const span = document.createElement("span");
+      span.className = "chord-token";
+      span.textContent = token;
+      markChordToken(span, token);
+      container.append(span);
+    } else {
+      container.append(token);
+    }
+
+    cursor = tokenRegex.lastIndex;
+  }
+
+  if (cursor < text.length) container.append(text.slice(cursor));
+}
+
+function markChordToken(element, token) {
+  element.classList.add("chord-token");
+  element.dataset.chord = token;
+  element.setAttribute("role", "button");
+  element.setAttribute("aria-label", `${token} chord shape`);
 }
 
 function buildMobileChordLyricSegments(chordLine, lyricLine, transpose) {
