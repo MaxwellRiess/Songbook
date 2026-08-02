@@ -16,6 +16,7 @@ let elements = null;
 let getSongChords = () => [];
 let query = "";
 let inversions = false;
+let innerMutes = false;
 let debounce = 0;
 
 export function initChordExplorer(options = {}) {
@@ -31,6 +32,7 @@ export function initChordExplorer(options = {}) {
     input: dialog.querySelector("#chordExplorerInput"),
     chips: dialog.querySelector("#chordExplorerChips"),
     inversions: dialog.querySelector("#chordExplorerInversions"),
+    innerMutes: dialog.querySelector("#chordExplorerInnerMutes"),
     summary: dialog.querySelector("#chordExplorerSummary"),
     results: dialog.querySelector("#chordExplorerResults"),
     close: dialog.querySelector("#closeChordDialogButton")
@@ -54,6 +56,11 @@ export function initChordExplorer(options = {}) {
     show(elements.input.value);
   });
 
+  elements.innerMutes.addEventListener("change", () => {
+    innerMutes = elements.innerMutes.checked;
+    show(elements.input.value);
+  });
+
   elements.chips.addEventListener("click", (event) => {
     const chip = event.target.closest("[data-chord]");
     if (!chip) return;
@@ -67,6 +74,7 @@ function open() {
   renderChips();
   elements.input.value = query;
   elements.inversions.checked = inversions;
+  elements.innerMutes.checked = innerMutes;
   elements.dialog.showModal();
   elements.input.focus();
   elements.input.select();
@@ -112,7 +120,7 @@ function show(value) {
     return;
   }
 
-  const voicings = getVoicings(parsed.symbol, { inversions });
+  const voicings = getVoicings(parsed.symbol, { inversions, innerMutes });
   elements.summary.classList.toggle("is-warning", voicings.length === 0);
 
   if (!voicings.length) {
@@ -120,12 +128,12 @@ function show(value) {
     return;
   }
 
-  const rootShapes = voicings.filter((voicing) => !voicing.inversion).length;
-  const inverted = voicings.length - rootShapes;
-  const counts = inverted
-    ? `${countShapes(rootShapes)} in root position, ${inverted} inverted`
-    : countShapes(rootShapes);
-  elements.summary.textContent = `${parsed.root} ${parsed.qualityName} · ${parsed.notes.join(" ")} · ${counts}`;
+  const inverted = voicings.filter((voicing) => voicing.inversion).length;
+  const muted = voicings.filter((voicing) => !voicing.inversion && voicing.innerMute).length;
+  const counts = [countShapes(voicings.length - inverted - muted) + " in root position"];
+  if (muted) counts.push(`${muted} with muted inner strings`);
+  if (inverted) counts.push(`${inverted} inverted`);
+  elements.summary.textContent = `${parsed.root} ${parsed.qualityName} · ${parsed.notes.join(" ")} · ${counts.join(", ")}`;
 
   for (const voicing of voicings) {
     elements.results.append(renderCard(voicing));
@@ -140,6 +148,7 @@ function renderCard(voicing) {
   const card = document.createElement("figure");
   card.className = "chord-explorer-card";
   if (voicing.inversion) card.classList.add("is-inversion");
+  if (voicing.innerMute) card.classList.add("is-inner-mute");
   card.append(createChordDiagram(voicing));
 
   const caption = document.createElement("figcaption");
@@ -160,6 +169,13 @@ function renderCard(voicing) {
   frets.textContent = voicing.frets.map((fret) => (fret === null ? "x" : fret)).join(" ");
 
   caption.append(position, frets);
+
+  if (voicing.innerMute) {
+    const tag = document.createElement("span");
+    tag.className = "chord-explorer-card-tag";
+    tag.textContent = "muted inner string";
+    caption.append(tag);
+  }
   card.append(caption);
   return card;
 }

@@ -355,7 +355,7 @@ export function getVoicings(symbol, options = {}) {
 
   const tuning = options.tuning || STANDARD_TUNING;
   const limit = options.limit || 14;
-  const inversionLimit = options.inversionLimit || 5;
+  const secondaryLimit = options.secondaryLimit || 5;
 
   const chordPcs = new Set(parsed.intervals.map((interval) => (parsed.rootPc + interval) % 12));
   const requiredPcs = parsed.intervals
@@ -366,13 +366,14 @@ export function getVoicings(symbol, options = {}) {
   const context = { parsed, tuning, chordPcs, requiredPcs, perPosition: options.perPosition || 1 };
   const seen = new Set();
 
+  /* Each option adds a labelled group rather than loosening the main search.
+     Both are searches for something different, not a relaxed version of the
+     default: dropping the bass rule mostly re-admits the same shapes with an
+     extra open string underneath, and merely permitting inner mutes would let
+     those shapes lose every position to the fuller shape they sit beside. */
   const rootBass = parsed.bassPc === null ? parsed.rootPc : parsed.bassPc;
-  const results = search(context, rootBass, seen).slice(0, limit);
+  const basses = [{ bassPc: rootBass, tag: null }];
 
-  /* Inversions are a separate, labelled group. Asking for a bass note that is
-     not the root is a different search, not a loosened version of this one:
-     dropping the bass rule outright mostly re-admits the same shapes with an
-     extra open string underneath. */
   if (options.inversions && parsed.bassPc === null) {
     for (const interval of INVERTIBLE_INTERVALS) {
       if (!parsed.intervals.includes(interval)) continue;
@@ -381,9 +382,27 @@ export function getVoicings(symbol, options = {}) {
       if (bassPc === parsed.rootPc) continue;
 
       const bass = spellNote(bassPc, spellsFlat(interval, parsed.useFlats));
-      const found = search(context, bassPc, seen).slice(0, inversionLimit);
+      basses.push({
+        bassPc,
+        tag: { inversion: true, bass, slashName: `${parsed.symbol}/${bass}` }
+      });
+    }
+  }
+
+  const results = [];
+
+  for (const { bassPc, tag } of basses) {
+    const modes = options.innerMutes ? ["reject", "require"] : ["reject"];
+
+    for (const mode of modes) {
+      const isPrimary = !tag && mode === "reject";
+      const found = search(context, bassPc, seen, mode).slice(
+        0,
+        isPrimary ? limit : secondaryLimit
+      );
+
       for (const shape of found) {
-        results.push({ ...shape, inversion: true, bass, slashName: `${parsed.symbol}/${bass}` });
+        results.push({ ...shape, ...tag, innerMute: mode === "require" });
       }
     }
   }
@@ -398,12 +417,13 @@ export function getVoicings(symbol, options = {}) {
   }));
 }
 
-function search(context, bassPc, seen) {
+function search(context, bassPc, seen, innerMutes) {
   const { parsed, tuning, chordPcs, requiredPcs, perPosition } = context;
   const results = [];
 
+  /* Curated shapes are all strummed whole, so they belong to the default pass. */
   const curated =
-    tuning === STANDARD_TUNING
+    tuning === STANDARD_TUNING && innerMutes !== "require"
       ? OPEN_SHAPE_INDEX.get(
           `${parsed.rootPc}|${parsed.quality}|${bassPc === parsed.rootPc ? "" : bassPc}`
         )
@@ -427,7 +447,15 @@ function search(context, bassPc, seen) {
       const key = fretKey(frets);
       if (seen.has(key)) return;
 
-      const shape = evaluateShape(frets, tuning, requiredPcs, bassPc, parsed.rootPc, chordPcs.size);
+      const shape = evaluateShape(
+        frets,
+        tuning,
+        requiredPcs,
+        bassPc,
+        parsed.rootPc,
+        chordPcs.size,
+        innerMutes
+      );
       if (!shape) return;
 
       seen.add(key);
@@ -478,20 +506,31 @@ function walk(optionsPerString, stringIndex, current, emit) {
   }
 }
 
-function evaluateShape(frets, tuning, requiredPcs, bassPc, rootPc, chordSize) {
+function evaluateShape(frets, tuning, requiredPcs, bassPc, rootPc, chordSize, innerMutes) {
   const sounded = [];
   for (let string = 0; string < frets.length; string += 1) {
     if (frets[string] !== null) sounded.push(string);
   }
 
-  const minStrings = chordSize <= 2 ? 3 : 4;
+  /* Shapes that skip a string in the middle are inherently sparser, so they are
+     allowed to use fewer strings than a shape that has to be strummed whole. */
+  const minStrings = chordSize <= 2 ? 3 : innerMutes === "require" ? 3 : 4;
   if (sounded.length < minStrings) return null;
 
-  /* No muted strings sandwiched between sounded ones: those shapes are hard to
-     strum cleanly and are not what a songbook wants. */
+  let hasInnerMute = false;
   for (let string = sounded[0]; string <= sounded[sounded.length - 1]; string += 1) {
-    if (frets[string] === null) return null;
+    if (frets[string] === null) {
+      hasInnerMute = true;
+      break;
+    }
   }
+
+  /* A muted string sandwiched between sounded ones cannot be strummed through,
+     so by default those shapes are rejected. When they are wanted they get
+     their own search, which requires one: without that they would be generated
+     and then lose every position to the fuller shape, since muted strings cost
+     score. */
+  if (innerMutes === "require" ? !hasInnerMute : hasInnerMute) return null;
 
   /* Compare pitches, not string numbers. A low string fretted high can sit
      above an open string next to it, so the lowest-numbered sounded string is

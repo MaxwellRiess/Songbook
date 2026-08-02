@@ -114,6 +114,45 @@ test("does not invert a chord that already names its bass note", () => {
   assert.equal(getVoicings("C/G", { inversions: true }).some((voicing) => voicing.inversion), false);
 });
 
+const innerMuteCount = (voicing) => {
+  const sounded = voicing.frets
+    .map((fret, string) => (fret === null ? null : string))
+    .filter((string) => string !== null);
+  return voicing.frets
+    .slice(sounded[0], sounded[sounded.length - 1] + 1)
+    .filter((fret) => fret === null).length;
+};
+
+test("leaves muted inner strings out unless they are asked for", () => {
+  for (const voicing of getVoicings("C")) {
+    assert.equal(innerMuteCount(voicing), 0);
+  }
+  assert.ok(getVoicings("C", { innerMutes: true }).some((voicing) => voicing.innerMute));
+});
+
+test("every shape flagged as an inner mute actually has one, and the rest do not", () => {
+  for (const symbol of ["C", "G13", "Am7", "Cm7"]) {
+    for (const voicing of getVoicings(symbol, { innerMutes: true })) {
+      const gaps = innerMuteCount(voicing);
+      assert.equal(gaps > 0, Boolean(voicing.innerMute), `${symbol} ${voicing.frets.join("-")}`);
+    }
+  }
+});
+
+test("muted inner string shapes come after the shapes that strum whole", () => {
+  const voicings = getVoicings("Am7", { innerMutes: true });
+  const firstMuted = voicings.findIndex((voicing) => voicing.innerMute);
+  assert.ok(firstMuted > 0);
+  assert.equal(voicings.slice(0, firstMuted).some((voicing) => voicing.innerMute), false);
+});
+
+test("the two options combine without producing duplicate shapes", () => {
+  const voicings = getVoicings("Am7", { inversions: true, innerMutes: true });
+  const keys = voicings.map((voicing) => voicing.frets.join("-"));
+  assert.equal(new Set(keys).size, keys.length);
+  assert.ok(voicings.some((voicing) => voicing.inversion && voicing.innerMute));
+});
+
 test("names the notes under each string", () => {
   const [open] = getVoicings("Em");
   assert.deepEqual(open.noteNames, ["E", "B", "E", "G", "B", "E"]);

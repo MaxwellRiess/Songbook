@@ -1374,6 +1374,12 @@ textarea {
   gap: 6px;
 }
 
+.chord-explorer-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+}
+
 .chord-explorer-toggle {
   display: flex;
   align-items: center;
@@ -1474,6 +1480,16 @@ textarea {
 
 .chord-explorer-card.is-inversion {
   border-style: dashed;
+}
+
+.chord-explorer-card.is-inner-mute {
+  border-color: var(--muted);
+}
+
+.chord-explorer-card-tag {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.02em;
 }
 
 .chord-explorer-card-name {
