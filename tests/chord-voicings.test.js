@@ -73,11 +73,45 @@ test("every shape is playable and spells the chord", () => {
         .some((fret) => fret === null);
       assert.equal(gap, false, `${symbol} ${asString(voicing)} mutes an inner string`);
 
-      // The lowest sounded note is the root, or the bass note of a slash chord.
-      const bass = (STANDARD_TUNING[sounded[0].string] + sounded[0].fret) % 12;
-      assert.equal(bass, parsed.bassPc === null ? parsed.rootPc : parsed.bassPc);
+      /* The lowest sounding note is the root, or the bass note of a slash
+         chord. This compares pitches rather than string numbers, because a low
+         string fretted high can sit above an open string next to it. */
+      const lowest = Math.min(
+        ...sounded.map(({ fret, string }) => STANDARD_TUNING[string] + fret)
+      );
+      assert.equal(lowest % 12, parsed.bassPc === null ? parsed.rootPc : parsed.bassPc);
     }
   }
+});
+
+test("leaves inversions out unless they are asked for", () => {
+  assert.equal(getVoicings("C").some((voicing) => voicing.inversion), false);
+  assert.ok(getVoicings("C", { inversions: true }).some((voicing) => voicing.inversion));
+});
+
+test("labels inversions with the full chord symbol over the bass note", () => {
+  const inversions = getVoicings("Am7", { inversions: true }).filter((voicing) => voicing.inversion);
+  const names = [...new Set(inversions.map((voicing) => voicing.slashName))];
+  assert.deepEqual(names, ["Am7/C", "Am7/E", "Am7/G"]);
+});
+
+test("puts root position first and each inversion on its own bass note", () => {
+  const voicings = getVoicings("C", { inversions: true });
+  const rootShapes = voicings.filter((voicing) => !voicing.inversion);
+  assert.ok(rootShapes.length);
+  assert.deepEqual(voicings.slice(0, rootShapes.length), rootShapes);
+
+  for (const voicing of voicings.filter((voicing) => voicing.inversion)) {
+    const sounded = voicing.frets
+      .map((fret, string) => (fret === null ? null : STANDARD_TUNING[string] + fret))
+      .filter((pitch) => pitch !== null);
+    const expected = { E: 4, G: 7 }[voicing.bass];
+    assert.equal(Math.min(...sounded) % 12, expected, `${voicing.slashName} bass is wrong`);
+  }
+});
+
+test("does not invert a chord that already names its bass note", () => {
+  assert.equal(getVoicings("C/G", { inversions: true }).some((voicing) => voicing.inversion), false);
 });
 
 test("names the notes under each string", () => {

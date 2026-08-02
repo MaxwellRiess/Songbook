@@ -1364,9 +1364,38 @@ textarea {
   padding: 22px;
 }
 
-.chord-explorer-search label {
+.chord-explorer-search {
+  display: grid;
+  gap: 10px;
+}
+
+.chord-explorer-search > label:first-child {
   display: grid;
   gap: 6px;
+}
+
+.chord-explorer-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chord-explorer-toggle input {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  accent-color: var(--accent);
+}
+
+.chord-explorer-toggle span {
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .chord-explorer-search span {
@@ -1375,7 +1404,7 @@ textarea {
   font-weight: 700;
 }
 
-.chord-explorer-search input {
+.chord-explorer-search input[type="text"] {
   width: 100%;
   min-height: 44px;
   border: 1px solid var(--line);
@@ -1441,6 +1470,16 @@ textarea {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: var(--panel-muted);
+}
+
+.chord-explorer-card.is-inversion {
+  border-style: dashed;
+}
+
+.chord-explorer-card-name {
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .chord-explorer-card figcaption {

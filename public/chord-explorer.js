@@ -15,6 +15,7 @@ const MAX_CHIPS = 24;
 let elements = null;
 let getSongChords = () => [];
 let query = "";
+let inversions = false;
 let debounce = 0;
 
 export function initChordExplorer(options = {}) {
@@ -29,6 +30,7 @@ export function initChordExplorer(options = {}) {
     form: dialog.querySelector("#chordExplorerForm"),
     input: dialog.querySelector("#chordExplorerInput"),
     chips: dialog.querySelector("#chordExplorerChips"),
+    inversions: dialog.querySelector("#chordExplorerInversions"),
     summary: dialog.querySelector("#chordExplorerSummary"),
     results: dialog.querySelector("#chordExplorerResults"),
     close: dialog.querySelector("#closeChordDialogButton")
@@ -47,6 +49,11 @@ export function initChordExplorer(options = {}) {
     debounce = setTimeout(() => show(elements.input.value), 160);
   });
 
+  elements.inversions.addEventListener("change", () => {
+    inversions = elements.inversions.checked;
+    show(elements.input.value);
+  });
+
   elements.chips.addEventListener("click", (event) => {
     const chip = event.target.closest("[data-chord]");
     if (!chip) return;
@@ -59,6 +66,7 @@ export function initChordExplorer(options = {}) {
 function open() {
   renderChips();
   elements.input.value = query;
+  elements.inversions.checked = inversions;
   elements.dialog.showModal();
   elements.input.focus();
   elements.input.select();
@@ -104,7 +112,7 @@ function show(value) {
     return;
   }
 
-  const voicings = getVoicings(parsed.symbol);
+  const voicings = getVoicings(parsed.symbol, { inversions });
   elements.summary.classList.toggle("is-warning", voicings.length === 0);
 
   if (!voicings.length) {
@@ -112,20 +120,36 @@ function show(value) {
     return;
   }
 
-  const shapes = voicings.length === 1 ? "1 shape" : `${voicings.length} shapes`;
-  elements.summary.textContent = `${parsed.root} ${parsed.qualityName} · ${parsed.notes.join(" ")} · ${shapes}`;
+  const rootShapes = voicings.filter((voicing) => !voicing.inversion).length;
+  const inverted = voicings.length - rootShapes;
+  const counts = inverted
+    ? `${countShapes(rootShapes)} in root position, ${inverted} inverted`
+    : countShapes(rootShapes);
+  elements.summary.textContent = `${parsed.root} ${parsed.qualityName} · ${parsed.notes.join(" ")} · ${counts}`;
 
   for (const voicing of voicings) {
     elements.results.append(renderCard(voicing));
   }
 }
 
+function countShapes(total) {
+  return total === 1 ? "1 shape" : `${total} shapes`;
+}
+
 function renderCard(voicing) {
   const card = document.createElement("figure");
   card.className = "chord-explorer-card";
+  if (voicing.inversion) card.classList.add("is-inversion");
   card.append(createChordDiagram(voicing));
 
   const caption = document.createElement("figcaption");
+
+  if (voicing.inversion) {
+    const name = document.createElement("span");
+    name.className = "chord-explorer-card-name";
+    name.textContent = voicing.slashName;
+    caption.append(name);
+  }
 
   const position = document.createElement("span");
   position.className = "chord-explorer-card-position";

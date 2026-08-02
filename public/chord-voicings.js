@@ -344,25 +344,71 @@ function shapeKey(parsed) {
 const FRET_SPAN = 3; // a four-fret window
 const MAX_FRET = 12;
 
+/* Which chord tones are worth putting in the bass when inversions are asked
+   for: the third, fifth and seventh. An extension in the bass is a different
+   chord in practice, not an inversion of this one. */
+const INVERTIBLE_INTERVALS = [3, 4, 6, 7, 8, 10, 11];
+
 export function getVoicings(symbol, options = {}) {
   const parsed = parseChordSymbol(symbol);
   if (!parsed) return [];
 
   const tuning = options.tuning || STANDARD_TUNING;
-  const perPosition = options.perPosition || 1;
   const limit = options.limit || 14;
+  const inversionLimit = options.inversionLimit || 5;
 
   const chordPcs = new Set(parsed.intervals.map((interval) => (parsed.rootPc + interval) % 12));
   const requiredPcs = parsed.intervals
     .filter((interval) => !parsed.optional.includes(interval))
     .map((interval) => (parsed.rootPc + interval) % 12);
-  const bassPc = parsed.bassPc === null ? parsed.rootPc : parsed.bassPc;
   if (parsed.bassPc !== null) chordPcs.add(parsed.bassPc);
 
+  const context = { parsed, tuning, chordPcs, requiredPcs, perPosition: options.perPosition || 1 };
   const seen = new Set();
+
+  const rootBass = parsed.bassPc === null ? parsed.rootPc : parsed.bassPc;
+  const results = search(context, rootBass, seen).slice(0, limit);
+
+  /* Inversions are a separate, labelled group. Asking for a bass note that is
+     not the root is a different search, not a loosened version of this one:
+     dropping the bass rule outright mostly re-admits the same shapes with an
+     extra open string underneath. */
+  if (options.inversions && parsed.bassPc === null) {
+    for (const interval of INVERTIBLE_INTERVALS) {
+      if (!parsed.intervals.includes(interval)) continue;
+
+      const bassPc = (parsed.rootPc + interval) % 12;
+      if (bassPc === parsed.rootPc) continue;
+
+      const bass = spellNote(bassPc, spellsFlat(interval, parsed.useFlats));
+      const found = search(context, bassPc, seen).slice(0, inversionLimit);
+      for (const shape of found) {
+        results.push({ ...shape, inversion: true, bass, slashName: `${parsed.symbol}/${bass}` });
+      }
+    }
+  }
+
+  return results.map((shape, index) => ({
+    ...shape,
+    index,
+    symbol: parsed.symbol,
+    noteNames: shape.frets.map((fret, string) =>
+      fret === null ? null : spellNote((tuning[string] + fret) % 12, parsed.useFlats)
+    )
+  }));
+}
+
+function search(context, bassPc, seen) {
+  const { parsed, tuning, chordPcs, requiredPcs, perPosition } = context;
   const results = [];
 
-  const curated = tuning === STANDARD_TUNING ? OPEN_SHAPE_INDEX.get(shapeKey(parsed)) : null;
+  const curated =
+    tuning === STANDARD_TUNING
+      ? OPEN_SHAPE_INDEX.get(
+          `${parsed.rootPc}|${parsed.quality}|${bassPc === parsed.rootPc ? "" : bassPc}`
+        )
+      : null;
+
   if (curated) {
     const shape = describeShape(curated, tuning, parsed.rootPc);
     if (shape) {
@@ -392,22 +438,18 @@ export function getVoicings(symbol, options = {}) {
   }
 
   for (const [position, bucket] of [...byPosition.entries()].sort((a, b) => a[0] - b[0])) {
-    if (curated && curated.length && position === results[0]?.position) continue;
+    if (curated && position === results[0]?.position) continue;
     bucket.sort((a, b) => a.score - b.score);
     results.push(...bucket.slice(0, perPosition));
   }
 
   results.sort(
-    (a, b) => Number(Boolean(b.preferred)) - Number(Boolean(a.preferred)) || a.position - b.position || a.score - b.score
+    (a, b) =>
+      Number(Boolean(b.preferred)) - Number(Boolean(a.preferred)) ||
+      a.position - b.position ||
+      a.score - b.score
   );
-  return results.slice(0, limit).map((shape, index) => ({
-    ...shape,
-    index,
-    symbol: parsed.symbol,
-    noteNames: shape.frets.map((fret, string) =>
-      fret === null ? null : spellNote((tuning[string] + fret) % 12, parsed.useFlats)
-    )
-  }));
+  return results;
 }
 
 function buildStringOptions(tuning, chordPcs, base) {
@@ -451,7 +493,12 @@ function evaluateShape(frets, tuning, requiredPcs, bassPc, rootPc, chordSize) {
     if (frets[string] === null) return null;
   }
 
-  if ((tuning[sounded[0]] + frets[sounded[0]]) % 12 !== bassPc) return null;
+  /* Compare pitches, not string numbers. A low string fretted high can sit
+     above an open string next to it, so the lowest-numbered sounded string is
+     not always the note that actually sounds lowest. */
+  let lowest = Infinity;
+  for (const string of sounded) lowest = Math.min(lowest, tuning[string] + frets[string]);
+  if (lowest % 12 !== bassPc) return null;
 
   const present = new Set(sounded.map((string) => (tuning[string] + frets[string]) % 12));
   for (const pc of requiredPcs) {
