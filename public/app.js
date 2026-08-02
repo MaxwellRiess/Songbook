@@ -30,6 +30,7 @@ import { detectSongConflicts, mergePlaylists, mergeSongs } from "./song-sync.js"
 import { renderSheet as buildSheetFragment } from "./song-renderer.js";
 import { initFollowMode } from "./follow-mode.js";
 import { closeChordPopover, initChordPopover } from "./chord-popover.js";
+import { collectSongChords, initChordExplorer } from "./chord-explorer.js";
 
 const state = {
   songs: [],
@@ -167,6 +168,9 @@ initFollowMode({
   onBeforeStart: stopAutoscroll
 });
 initChordPopover(elements.viewer);
+initChordExplorer({
+  getSongChords: () => collectSongChords(getSelectedSong(), state.transpose)
+});
 
 async function loadLibrary() {
   state.songs = await getStoredSongs();

@@ -5,12 +5,14 @@ import { diagramWindow } from "./chord-voicings.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-const LEFT = 25;
+/* The left gutter has to fit a two-digit position label such as "10fr". */
+const LEFT = 30;
+const RIGHT = 14;
 const TOP = 36;
 const STRING_GAP = 18;
 const FRET_GAP = 25;
 const FRET_COUNT = 5;
-const WIDTH = LEFT * 2 + STRING_GAP * 5;
+const WIDTH = LEFT + STRING_GAP * 5 + RIGHT;
 const BOARD_BOTTOM = TOP + FRET_GAP * FRET_COUNT;
 const HEIGHT = BOARD_BOTTOM + 24;
 
@@ -54,7 +56,7 @@ export function createChordDiagram(voicing, options = {}) {
 
   if (baseFret > 1) {
     svg.append(
-      text(LEFT - 9, TOP + FRET_GAP * 0.6, `${baseFret}fr`, "chord-diagram-position", "end")
+      text(LEFT - 8, TOP + FRET_GAP * 0.6, `${baseFret}fr`, "chord-diagram-position", "end")
     );
   }
 
@@ -87,22 +89,36 @@ export function createChordDiagram(voicing, options = {}) {
     }
   }
 
-  // Fingered notes.
+  // Fingered notes. Strings under a barre share one dot and one finger number.
   for (let string = 0; string < 6; string += 1) {
     const fret = voicing.frets[string];
     if (!fret) continue;
 
     const row = fret - baseFret;
     if (row < 0 || row >= FRET_COUNT) continue;
+    if (voicing.barre && voicing.barre.fret === fret) continue;
 
     const x = LEFT + string * STRING_GAP;
     const y = TOP + (row + 0.5) * FRET_GAP;
-    const barred = voicing.barre && voicing.barre.fret === fret;
-
-    if (!barred) svg.append(element("circle", { cx: x, cy: y, r: 7, class: "chord-diagram-dot" }));
+    svg.append(element("circle", { cx: x, cy: y, r: 7, class: "chord-diagram-dot" }));
 
     const finger = voicing.fingers[string];
     if (finger) svg.append(text(x, y + 3.6, String(finger), "chord-diagram-finger"));
+  }
+
+  if (voicing.barre) {
+    const row = voicing.barre.fret - baseFret;
+    if (row >= 0 && row < FRET_COUNT) {
+      const midpoint = (voicing.barre.from + voicing.barre.to) / 2;
+      svg.append(
+        text(
+          LEFT + midpoint * STRING_GAP,
+          TOP + (row + 0.5) * FRET_GAP + 3.6,
+          "1",
+          "chord-diagram-finger"
+        )
+      );
+    }
   }
 
   if (showNotes && voicing.noteNames) {
@@ -129,10 +145,14 @@ export function describeVoicing(voicing, baseFret) {
   return `${voicing.symbol} chord shape${position}: ${parts.join(", ")}`;
 }
 
+/* "Open position" only means anything when the diagram still shows the nut,
+   so the label is decided by the drawn window rather than by the frets alone. */
 export function positionLabel(voicing) {
-  const open = voicing.frets.some((fret) => fret === 0);
   if (voicing.position === 0) return "open strings";
-  if (open && voicing.position <= 4) return "open position";
+
+  const { baseFret } = diagramWindow(voicing, FRET_COUNT);
+  const open = voicing.frets.some((fret) => fret === 0);
+  if (baseFret === 1 && open) return "open position";
   return `fret ${voicing.position}`;
 }
 

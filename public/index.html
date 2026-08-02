@@ -103,6 +103,7 @@
             <div id="songMeta" class="song-meta"></div>
           </div>
           <div class="header-actions">
+            <button id="chordLookupButton" type="button">Chords</button>
             <div class="header-playlist-picker" aria-label="Add selected song to playlist">
               <button id="headerPlaylistMenuButton" type="button" aria-haspopup="menu" aria-expanded="false" disabled>Add to playlist</button>
               <div id="headerPlaylistMenu" class="header-playlist-menu" role="menu" hidden></div>
@@ -193,6 +194,28 @@
           <button type="submit">Save song</button>
         </div>
       </form>
+    </dialog>
+
+    <dialog id="chordDialog" class="chord-dialog">
+      <div class="chord-dialog-body">
+        <div class="dialog-header">
+          <h2>Chord shapes</h2>
+          <button id="closeChordDialogButton" class="icon-button" type="button" title="Close" aria-label="Close">
+            <span aria-hidden="true">x</span>
+          </button>
+        </div>
+
+        <form id="chordExplorerForm" class="chord-explorer-search">
+          <label>
+            <span>Chord</span>
+            <input id="chordExplorerInput" type="text" placeholder="Am7, C/G, F#m11, Bb13" autocomplete="off" autocapitalize="off" spellcheck="false">
+          </label>
+        </form>
+
+        <div id="chordExplorerChips" class="chord-explorer-chips" hidden></div>
+        <p id="chordExplorerSummary" class="chord-explorer-summary"></p>
+        <div id="chordExplorerResults" class="chord-explorer-results"></div>
+      </div>
     </dialog>
 
     <dialog id="syncDialog">

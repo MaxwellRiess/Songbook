@@ -23,6 +23,8 @@ The app also runs as a static PWA from the `public/` folder, which is what GitHu
 - Transpose chords in the viewer without changing the saved original
 - Hover a chord (or tap it on a phone) to see how to play it, and step through
   voicings from the open shape up the neck
+- Look up any chord from the **Chords** button in the header, with every voicing
+  shown at once
 - Copy the stored chord sheet
 - Import from Ultimate Guitar URLs when the page HTML is accessible
 
