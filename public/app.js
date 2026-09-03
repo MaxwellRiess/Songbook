@@ -31,6 +31,7 @@ import { renderSheet as buildSheetFragment } from "./song-renderer.js";
 import { initFollowMode } from "./follow-mode.js";
 import { closeChordPopover, initChordPopover } from "./chord-popover.js";
 import { collectSongChords, initChordExplorer } from "./chord-explorer.js";
+import { initTuner } from "./tuner.js";
 
 const state = {
   songs: [],
@@ -173,6 +174,7 @@ initChordPopover(elements.viewer);
 initChordExplorer({
   getSongChords: () => collectSongChords(getSelectedSong(), state.transpose)
 });
+initTuner();
 
 async function loadLibrary() {
   state.songs = await getStoredSongs();

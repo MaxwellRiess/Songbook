@@ -1,4 +1,4 @@
-const CACHE_NAME = "songbook-v17";
+const CACHE_NAME = "songbook-v18";
 const APP_SHELL = [
   "./",
   "index.html",
@@ -15,6 +15,7 @@ const APP_SHELL = [
   "song-model.js",
   "song-renderer.js",
   "song-sync.js",
+  "tuner.js",
   "manifest.webmanifest",
   "icon-192.png",
   "icon-512.png",

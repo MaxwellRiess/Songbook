@@ -25,6 +25,8 @@ The app also runs as a static PWA from the `public/` folder, which is what GitHu
   voicings from the open shape up the neck
 - Look up any chord from the **Chords** button in the header, with every voicing
   shown at once, and optional inversions and shapes with muted inner strings
+- Tune by ear from the **Tuner** panel in the sidebar, which plays the six
+  concert pitches of standard tuning (E2 A2 D3 G3 B3 E4, A4 = 440 Hz)
 - Copy the stored chord sheet
 - Import from Ultimate Guitar URLs when the page HTML is accessible
 
