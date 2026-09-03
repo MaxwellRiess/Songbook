@@ -837,6 +837,17 @@ textarea {
   background: var(--danger);
 }
 
+.dialog-status {
+  margin: 14px 0 0;
+  min-height: 1.2em;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.dialog-status.error {
+  color: var(--danger);
+}
+
 .autoscroll-controls {
   position: fixed;
   right: 24px;

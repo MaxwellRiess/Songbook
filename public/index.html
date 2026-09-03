@@ -243,8 +243,8 @@
             <input id="supabaseUrlInput" type="url" placeholder="https://your-project.supabase.co">
           </label>
           <label>
-            <span>Anon key</span>
-            <input id="supabaseAnonKeyInput" type="password" autocomplete="off">
+            <span>Publishable key</span>
+            <input id="supabaseApiKeyInput" type="password" autocomplete="off" placeholder="sb_publishable_... or a legacy anon key">
           </label>
           <label>
             <span>Email</span>
@@ -255,6 +255,8 @@
             <input id="syncCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code from email">
           </label>
         </div>
+
+        <p id="syncDialogStatus" class="dialog-status" role="status" aria-live="polite"></p>
 
         <div class="dialog-actions">
           <button id="signOutButton" type="button">Sign out</button>

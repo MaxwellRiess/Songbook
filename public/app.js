@@ -114,7 +114,9 @@ const elements = {
   syncForm: document.querySelector("#syncForm"),
   closeSyncDialogButton: document.querySelector("#closeSyncDialogButton"),
   supabaseUrlInput: document.querySelector("#supabaseUrlInput"),
-  supabaseAnonKeyInput: document.querySelector("#supabaseAnonKeyInput"),
+  supabaseApiKeyInput: document.querySelector("#supabaseApiKeyInput"),
+  syncDialogStatus: document.querySelector("#syncDialogStatus"),
+  sendMagicLinkButton: document.querySelector("#sendMagicLinkButton"),
   syncEmailInput: document.querySelector("#syncEmailInput"),
   syncCodeInput: document.querySelector("#syncCodeInput"),
   sendMagicLinkButton: document.querySelector("#sendMagicLinkButton"),
@@ -1049,7 +1051,7 @@ async function initializeSupabase() {
     return;
   }
 
-  state.supabaseClient = window.supabase.createClient(state.supabaseConfig.url, state.supabaseConfig.anonKey);
+  state.supabaseClient = window.supabase.createClient(state.supabaseConfig.url, state.supabaseConfig.apiKey);
   const { data, error } = await state.supabaseClient.auth.getSession();
   if (error) {
     updateSyncStatus(error.message);
@@ -1065,35 +1067,45 @@ async function initializeSupabase() {
   updateSyncStatus();
 }
 
+// Settings saved before Supabase renamed the anon key still carry `anonKey`.
 function readSupabaseConfig() {
   try {
     const stored = JSON.parse(localStorage.getItem(SUPABASE_CONFIG_KEY) || "null");
-    if (!stored?.url || !stored?.anonKey) return null;
-    return stored;
+    const apiKey = stored?.apiKey || stored?.anonKey;
+    if (!stored?.url || !apiKey) return null;
+    return { url: stored.url, apiKey };
   } catch {
     return null;
   }
 }
 
 function openSyncDialog() {
+  setSyncDialogStatus("");
   elements.supabaseUrlInput.value = state.supabaseConfig?.url || "";
-  elements.supabaseAnonKeyInput.value = state.supabaseConfig?.anonKey || "";
+  elements.supabaseApiKeyInput.value = state.supabaseConfig?.apiKey || "";
   elements.syncDialog.showModal();
 }
 
-async function saveSupabaseSettings() {
+async function saveSupabaseSettings({ closeDialog = true } = {}) {
   const url = elements.supabaseUrlInput.value.trim().replace(/\/+$/, "");
-  const anonKey = elements.supabaseAnonKeyInput.value.trim();
-  if (!url || !anonKey) {
-    toast("Supabase URL and anon key are required.", true);
+  const apiKey = elements.supabaseApiKeyInput.value.trim();
+  if (!url || !apiKey) {
+    toast("Supabase URL and publishable key are required.", true);
     return;
   }
 
-  localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify({ url, anonKey }));
-  state.supabaseConfig = { url, anonKey };
-  state.supabaseClient = window.supabase?.createClient(url, anonKey) || null;
+  // A secret key bypasses Row Level Security, and anything stored here is
+  // readable by anyone using this browser, so refuse it outright.
+  if (looksLikeSecretKey(apiKey)) {
+    toast("That is a secret key. Use the publishable key, which is safe in a browser.", true);
+    return;
+  }
+
+  localStorage.setItem(SUPABASE_CONFIG_KEY, JSON.stringify({ url, apiKey }));
+  state.supabaseConfig = { url, apiKey };
+  state.supabaseClient = window.supabase?.createClient(url, apiKey) || null;
   state.supabaseUser = null;
-  elements.syncDialog.close();
+  if (closeDialog) elements.syncDialog.close();
   updateSyncStatus();
 
   if (!state.supabaseClient) {
@@ -1112,52 +1124,86 @@ async function saveSupabaseSettings() {
   toast("Saved Supabase settings");
 }
 
+// Covers both the `sb_secret_...` keys and the legacy service_role JWTs.
+function looksLikeSecretKey(key) {
+  if (key.startsWith("sb_secret_")) return true;
+
+  try {
+    const payload = key.split(".")[1];
+    if (!payload) return false;
+    const decoded = atob(payload.replace(/-/g, "+").replace(/_/g, "/"));
+    return JSON.parse(decoded).role === "service_role";
+  } catch {
+    return false;
+  }
+}
+
 async function sendMagicLink() {
   if (!state.supabaseClient) {
-    await saveSupabaseSettings();
+    await saveSupabaseSettings({ closeDialog: false });
   }
-  if (!state.supabaseClient) return;
+  if (!state.supabaseClient) {
+    setSyncDialogStatus("Save your Supabase URL and publishable key first.", true);
+    return;
+  }
 
   const email = elements.syncEmailInput.value.trim();
   if (!email) {
-    toast("Enter an email address.", true);
+    setSyncDialogStatus("Enter an email address.", true);
     return;
   }
 
-  const { error } = await state.supabaseClient.auth.signInWithOtp({
-    email,
-    options: { emailRedirectTo: window.location.href }
-  });
-  if (error) {
-    toast(error.message, true);
-    return;
-  }
+  // Sending twice in quick succession trips Supabase's email rate limit, so the
+  // button stays disabled until the request comes back.
+  elements.sendMagicLinkButton.disabled = true;
+  setSyncDialogStatus(`Sending a code to ${email}...`);
 
-  toast("Code sent. Enter the 6-digit code from the email below.");
+  try {
+    const { error } = await state.supabaseClient.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: window.location.href }
+    });
+    if (error) {
+      setSyncDialogStatus(error.message, true);
+      toast(error.message, true);
+      return;
+    }
+
+    setSyncDialogStatus(`Code sent to ${email}. Check your inbox and spam folder, then enter the 6-digit code below.`);
+    toast("Code sent");
+  } catch (error) {
+    setSyncDialogStatus(error.message || "Could not reach Supabase.", true);
+  } finally {
+    elements.sendMagicLinkButton.disabled = false;
+  }
 }
 
 async function verifyMagicCode() {
   if (!state.supabaseClient) {
-    toast("Save your Supabase settings first.", true);
+    setSyncDialogStatus("Save your Supabase settings first.", true);
     return;
   }
 
   const email = elements.syncEmailInput.value.trim();
   const token = elements.syncCodeInput.value.trim();
   if (!email || !token) {
-    toast("Enter your email and the code from the email.", true);
+    setSyncDialogStatus("Enter your email and the code from the email.", true);
     return;
   }
+
+  setSyncDialogStatus("Checking the code...");
 
   // Verifying the code creates the session directly in this context, so an
   // installed PWA signs in without depending on the email link opening here.
   const { error } = await state.supabaseClient.auth.verifyOtp({ email, token, type: "email" });
   if (error) {
+    setSyncDialogStatus(error.message, true);
     toast(error.message, true);
     return;
   }
 
   elements.syncCodeInput.value = "";
+  setSyncDialogStatus(`Signed in as ${email}. Syncing your library.`);
   // onAuthStateChange picks up the new session and triggers the sync.
   toast("Signed in");
 }
@@ -1759,9 +1805,28 @@ function restoreTheme() {
 function toast(message, isError = false) {
   elements.toast.textContent = message;
   elements.toast.classList.toggle("error", isError);
+  moveToastAboveOpenDialog();
+  // Flush layout so the fade starts from opacity 0. requestAnimationFrame would
+  // never fire if the tab is in the background, leaving the toast stuck hidden.
+  void elements.toast.offsetWidth;
   elements.toast.classList.add("visible");
   window.clearTimeout(toast.timeout);
   toast.timeout = window.setTimeout(() => {
     elements.toast.classList.remove("visible");
   }, 3200);
+}
+
+/* A modal <dialog> is promoted to the browser's top layer, which paints above
+   every ordinary element whatever its z-index, so a toast sitting in the body
+   is hidden behind an open dialog. Moving it inside the dialog puts it in the
+   same layer. It stays position:fixed, so the corner placement is unchanged. */
+function moveToastAboveOpenDialog() {
+  const host = document.querySelector("dialog:modal") || document.body;
+  if (elements.toast.parentElement !== host) host.append(elements.toast);
+}
+
+// Dialog messages persist until the next step, unlike the toast which times out.
+function setSyncDialogStatus(message, isError = false) {
+  elements.syncDialogStatus.textContent = message;
+  elements.syncDialogStatus.classList.toggle("error", isError);
 }

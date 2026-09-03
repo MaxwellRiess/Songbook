@@ -13,6 +13,8 @@ create table if not exists public.songs (
   updated_at timestamptz not null default now()
 );
 
+grant select, insert, update, delete on table public.songs to authenticated;
+
 alter table public.songs enable row level security;
 
 drop policy if exists "Users can read their own songs" on public.songs;

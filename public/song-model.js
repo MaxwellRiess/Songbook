@@ -1,4 +1,4 @@
-export const HIDDEN_META_TAGS = new Set(["clip", "clipped", "ultimate-guitar", "ultimate guitar"]);
+export const HIDDEN_META_TAGS = new Set(["clip", "clipped", "ultimate-guitar", "ultimate guitar", "guitartuna", "guitar tuna"]);
 
 export function normalizeSong(input) {
   const timestamp = new Date().toISOString();

@@ -45,11 +45,11 @@ For this repository, the expected project Pages URL is:
 https://maxwellriess.github.io/Songbook/
 ```
 
-## Ultimate Guitar Import
+## Ultimate Guitar and GuitarTuna Import
 
-The hosted PWA does not server-scrape Ultimate Guitar pages. Use the browser extension clipper instead:
+The hosted PWA does not server-scrape chord sites. Use the browser extension clipper instead:
 
-1. Open a tab on `tabs.ultimate-guitar.com` or `ultimate-guitar.com`
+1. Open a tab on `tabs.ultimate-guitar.com`, `ultimate-guitar.com` or `guitartuna.com`
 2. Click **Songbook Clipper**
 3. Keep the app URL as `https://maxwellriess.github.io/Songbook`
 4. Click **Clip current tab**
@@ -65,7 +65,7 @@ Manual entry still accepts Ultimate Guitar chord markup such as:
 
 ## Browser Extension Clipper
 
-The `extension/` folder contains a Chrome/Edge-compatible Manifest V3 extension that clips a manually loaded Ultimate Guitar page into this local app.
+The `extension/` folder contains a Chrome/Edge-compatible Manifest V3 extension that clips a manually loaded Ultimate Guitar or GuitarTuna page into this local app.
 
 Install it locally:
 
@@ -78,25 +78,32 @@ Install it locally:
 
 Use it:
 
-1. Open a tab on `tabs.ultimate-guitar.com` or `ultimate-guitar.com`
+1. Open a tab on `tabs.ultimate-guitar.com`, `ultimate-guitar.com` or `guitartuna.com`
 2. Let the page load normally in your browser
 3. Click the **Songbook Clipper** extension button
 4. Use `https://maxwellriess.github.io/Songbook` for the hosted PWA, or `http://127.0.0.1:3000` for local development
 5. Click **Clip current tab**
 
-The extension first tries to read Ultimate Guitar's embedded page data. If that is unavailable, it falls back to visible chord-sheet text.
+On Ultimate Guitar the extension first tries to read the embedded page data. Ultimate Guitar's own scripts strip that data from the page once it loads, so the extension re-reads the page's server HTML to recover it. Failing that, it reads the song details from the page's schema.org JSON-LD and falls back to visible chord-sheet text.
+
+GuitarTuna renders a song as a beat grid rather than a chord sheet, so the extension reads the grid instead. Every lyric line is a row of beat cells, each declaring how many characters it spans, so adding up the cells before a chord gives the column that chord sits above. The extension rebuilds a plain chords-over-lyrics sheet from those columns and takes the title, artist, key, capo and tuning from the page's schema.org JSON-LD.
 
 ## Supabase Sync
 
-The app can sync songs and playlists to a Supabase project using email magic-link sign-in. IndexedDB storage still works without Supabase.
+The app can sync songs and playlists to a Supabase project using an emailed sign-in code. IndexedDB storage still works without Supabase.
 
 Set up Supabase:
 
 1. Create a Supabase project
 2. Open the SQL editor
 3. Run `supabase/schema.sql`
-4. In **Project Settings > API**, copy the project URL and anon public key
+4. In **Project Settings > API Keys**, copy the project URL and the **publishable** key (`sb_publishable_...`)
 5. In **Authentication > URL Configuration**, add your app URL to the redirect URLs
+6. In **Authentication > Emails**, open the **Magic Link** template and add `{{ .Token }}` to it, for example `<p>Your Songbook sign-in code is {{ .Token }}</p>`
+
+Step 6 is easy to miss and blocks sign-in completely. Supabase's default Magic Link template contains only a link, no code, so without `{{ .Token }}` the email never shows the 6-digit code this app asks for, sign-in can never finish, and nothing ever syncs.
+
+Projects created before November 2025 show a legacy **anon** key instead of a publishable key. Either works here: Supabase deprecated the anon key rather than removing it, and both go in the same field. Projects created from November 2025 onwards only have publishable keys.
 
 If playlists already existed before playlist sync was added, run the latest `supabase/schema.sql` again. It migrates playlist IDs and playlist song IDs to text columns so older local IDs can sync safely.
 
@@ -104,15 +111,18 @@ Use sync:
 
 1. Open Songbook
 2. Click **Sync > Settings**
-3. Paste the project URL and anon key
-4. Enter your email
-5. Click **Send magic link**
-6. Open the magic link in the same browser
-7. Click **Sync**
+3. Paste the project URL and publishable key, then click **Save settings**
+4. Enter your email and click **Send code**
+5. Enter the 6-digit code from the email and click **Verify code**
+6. Click **Sync**
+
+Signing in with the code rather than the emailed link means an installed PWA signs in without the link needing to open in the same browser. The link in the same email still works if you open it in the browser running the app.
+
+Sync uploads the whole local library on the first successful sign-in, so the Supabase tables stay empty until sign-in completes. Empty tables usually mean sign-in never finished, not that data was lost.
 
 The tables use Row Level Security policies so signed-in users can only read and write their own songs and playlists.
 
-The Supabase anon key is safe to use in the browser when Row Level Security is enabled. Do not use a service-role key in the app.
+The publishable key (like the legacy anon key) is safe to use in the browser when Row Level Security is enabled. Do not paste a secret or service-role key into the app; it bypasses Row Level Security, and the settings dialog rejects it.
 
 ## Backup
 

@@ -50,7 +50,21 @@ function renderLine(line, transpose) {
     return wrapper;
   }
 
+  // parseChordLine spaces chords against lyric offsets, so an intro or break made
+  // up only of [ch] chords has nothing to position against and collapses into one
+  // run. Keep the spacing the source line already had.
+  if (!parsed.lyrics.trim()) {
+    const chordLine = document.createElement("div");
+    chordLine.className = "sheet-line plain-chord-line";
+    appendChordTokens(chordLine, transposeChordLine(unwrapChordTags(cleanedLine), transpose));
+    return chordLine;
+  }
+
   return renderResponsiveChordLyricPair(parsed.chords, parsed.lyrics, transpose);
+}
+
+function unwrapChordTags(value) {
+  return value.replace(/\[ch\]([\s\S]*?)\[\/ch\]/gi, "$1");
 }
 
 function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose) {

@@ -170,12 +170,15 @@ async function importUltimateGuitar(sourceUrl) {
     .replace(/\[\/?tab\]/gi, "")
     .trim();
 
+  const tabInfo = findTabInfo(pageData) || {};
+  const meta = tabView.meta || {};
+
   return normalizeSong({
-    title: tabView.song_name || tabView.name || inferTitleFromHtml(html) || "Untitled song",
-    artist: tabView.artist_name || tabView.artist?.name || inferArtistFromHtml(html) || "Unknown artist",
-    key: tabView.tonality_name || "",
-    capo: normalizeCapo(tabView.capo),
-    tuning: tabView.tuning?.name || tabView.tuning_name || "Standard",
+    title: tabInfo.song_name || tabView.song_name || tabView.name || inferTitleFromHtml(html) || "Untitled song",
+    artist: tabInfo.artist_name || tabView.artist_name || tabView.artist?.name || inferArtistFromHtml(html) || "Unknown artist",
+    key: meta.tonality || tabInfo.tonality_name || tabView.tonality_name || "",
+    capo: normalizeCapo(meta.capo ?? tabView.capo),
+    tuning: meta.tuning?.name || meta.tuning?.value || tabView.tuning?.name || tabView.tuning_name || "Standard",
     sourceUrl: parsedUrl.toString(),
     rawContent: cleanedContent,
     tags: ["imported", "ultimate-guitar"]
@@ -209,6 +212,28 @@ function extractUltimateGuitarData(html) {
   }
 
   throw new Error("Could not parse Ultimate Guitar page data.");
+}
+
+// Song, artist and key moved off tab_view and onto the sibling `tab` record.
+function findTabInfo(value) {
+  if (!value || typeof value !== "object") return null;
+
+  const stack = [value];
+  const seen = new Set();
+
+  while (stack.length) {
+    const current = stack.pop();
+    if (!current || typeof current !== "object" || seen.has(current)) continue;
+    seen.add(current);
+
+    if (current.tab && typeof current.tab === "object" && current.tab.song_name) return current.tab;
+
+    for (const child of Object.values(current)) {
+      if (child && typeof child === "object") stack.push(child);
+    }
+  }
+
+  return null;
 }
 
 function findTabView(value) {
@@ -358,7 +383,13 @@ async function serveStatic(pathname, res) {
 
   try {
     const body = await readFile(target);
-    res.writeHead(200, { "content-type": MIME_TYPES[extname(target)] || "application/octet-stream" });
+    // Without this the browser applies heuristic caching and can keep serving a
+    // stale app.js or sw.js after an edit, which looks like the change never
+    // landed. "no-cache" still allows caching, it just forces revalidation.
+    res.writeHead(200, {
+      "content-type": MIME_TYPES[extname(target)] || "application/octet-stream",
+      "cache-control": "no-cache"
+    });
     return res.end(body);
   } catch {
     return sendJson(res, { error: "Not found." }, 404);
@@ -388,6 +419,7 @@ function isMainModule() {
 export {
   decodeEscapes,
   extractUltimateGuitarData,
+  findTabInfo,
   findTabView,
   importUltimateGuitar,
   normalizeSong

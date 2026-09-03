@@ -10,6 +10,12 @@ const elements = {
 
 const DEFAULT_APP_URL = "https://maxwellriess.github.io/Songbook";
 
+// Each source gets only the readers its extraction path uses.
+const SOURCE_FILES = {
+  "ultimate-guitar": ["chord-utils-content.js"],
+  guitartuna: ["guitartuna-content.js"]
+};
+
 init();
 
 function init() {
@@ -32,18 +38,20 @@ async function clipCurrentTab() {
 
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    if (!tab?.id || !isUltimateGuitarUrl(tab.url || "")) {
-      throw new Error("Open a loaded Ultimate Guitar tab page first.");
+    const source = detectSource(tab?.url || "");
+    if (!tab?.id || !source) {
+      throw new Error("Open a loaded Ultimate Guitar or GuitarTuna chord page first.");
     }
 
     elements.pageStatus.textContent = "Reading page";
     await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      files: ["chord-utils-content.js"]
+      files: SOURCE_FILES[source]
     });
     const [result] = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
-      func: extractSongFromLoadedPage
+      func: extractSongFromLoadedPage,
+      args: [source]
     });
 
     if (!result?.result?.song) {
@@ -104,9 +112,19 @@ function normalizeAppUrl(value) {
   return (value || DEFAULT_APP_URL).trim().replace(/\/+$/, "");
 }
 
+// chrome.tabs.query rejects a pattern with no path, so a bare origin such as
+// "http://127.0.0.1:3000" has to gain the "/" that normalizeAppUrl strips.
+function toMatchPattern(appUrl) {
+  try {
+    const url = new URL(appUrl);
+    return `${url.origin}${url.pathname}*`;
+  } catch {
+    return `${appUrl}*`;
+  }
+}
+
 async function getSongbookTab(appUrl) {
-  const appPattern = `${appUrl}*`;
-  const existingTabs = await chrome.tabs.query({ url: appPattern });
+  const existingTabs = await chrome.tabs.query({ url: toMatchPattern(appUrl) });
   const tab = existingTabs[0] || await chrome.tabs.create({ url: appUrl, active: false });
   return { tab, shouldClose: !existingTabs.length };
 }
@@ -210,26 +228,51 @@ function importSongIntoSongbookPage(song) {
   }
 }
 
-function isUltimateGuitarUrl(value) {
+function detectSource(value) {
   try {
-    const url = new URL(value);
-    return url.hostname === "ultimate-guitar.com" || url.hostname.endsWith(".ultimate-guitar.com");
+    const { hostname } = new URL(value);
+    if (matchesHost(hostname, "ultimate-guitar.com")) return "ultimate-guitar";
+    if (matchesHost(hostname, "guitartuna.com")) return "guitartuna";
+    return "";
   } catch {
-    return false;
+    return "";
   }
 }
 
-function extractSongFromLoadedPage() {
+function matchesHost(hostname, domain) {
+  const host = hostname.toLowerCase();
+  return host === domain || host.endsWith(`.${domain}`);
+}
+
+async function extractSongFromLoadedPage(source) {
   try {
+    if (source === "guitartuna") {
+      if (!globalThis.songbookGuitarTuna?.extractSong) {
+        throw new Error("Songbook GuitarTuna reader did not load.");
+      }
+      return { song: globalThis.songbookGuitarTuna.extractSong(document) };
+    }
+
     if (!globalThis.songbookChordUtils?.isPlainChordLine) {
       throw new Error("Songbook chord parser did not load.");
     }
 
-    const pageData = extractUltimateGuitarDataFromDom();
+    let pageData = extractUltimateGuitarData(document);
+
+    // Ultimate Guitar's React app deletes the js-store payload from the DOM once it
+    // hydrates, so a page the user has been reading no longer carries it. Re-reading
+    // the server HTML recovers the original tab data, including the [ch] chord markup.
+    if (!hasUsableTabData(pageData)) {
+      const serverDocument = await fetchServerDocument();
+      if (serverDocument) pageData = extractUltimateGuitarData(serverDocument);
+    }
+
     const tabView = findTabView(pageData);
+    const tabInfo = findTabInfo(pageData);
+    const meta = tabView?.meta || {};
+    const jsonLd = extractJsonLdMeta();
     const content = getNested(tabView, ["wiki_tab", "content"]) || getNested(tabView, ["tab", "content"]) || findChordContent(pageData);
-    const visibleFallback = extractVisibleTabText();
-    const rawContent = normalizeContent(content || visibleFallback);
+    const rawContent = normalizeContent(content || extractVisibleTabText());
 
     if (!rawContent) {
       throw new Error("No chord sheet text was found on the loaded page.");
@@ -237,11 +280,11 @@ function extractSongFromLoadedPage() {
 
     return {
       song: {
-        title: tabView?.song_name || tabView?.name || inferTitle() || "Untitled song",
-        artist: tabView?.artist_name || tabView?.artist?.name || inferArtist() || "Unknown artist",
-        key: tabView?.tonality_name || "",
-        capo: normalizeCapo(tabView?.capo),
-        tuning: tabView?.tuning?.name || tabView?.tuning_name || "",
+        title: tabInfo?.song_name || tabView?.song_name || tabView?.name || jsonLd.title || inferTitle() || "Untitled song",
+        artist: tabInfo?.artist_name || tabView?.artist_name || tabView?.artist?.name || jsonLd.artist || inferArtist() || "Unknown artist",
+        key: meta.tonality || tabInfo?.tonality_name || tabView?.tonality_name || jsonLd.key || "",
+        capo: normalizeCapo(meta.capo ?? tabView?.capo ?? jsonLd.capo),
+        tuning: meta.tuning?.name || meta.tuning?.value || tabView?.tuning?.name || tabView?.tuning_name || jsonLd.tuning || "",
         tags: ["clipped", "ultimate-guitar"],
         sourceUrl: location.href,
         rawContent
@@ -251,15 +294,30 @@ function extractSongFromLoadedPage() {
     return { error: error.message || "Extraction failed." };
   }
 
-  function extractUltimateGuitarDataFromDom() {
+  function hasUsableTabData(pageData) {
+    const tabView = findTabView(pageData);
+    return Boolean(getNested(tabView, ["wiki_tab", "content"]) || getNested(tabView, ["tab", "content"]) || findChordContent(pageData));
+  }
+
+  async function fetchServerDocument() {
+    try {
+      const response = await fetch(location.href, { credentials: "include" });
+      if (!response.ok) return null;
+      return new DOMParser().parseFromString(await response.text(), "text/html");
+    } catch {
+      return null;
+    }
+  }
+
+  function extractUltimateGuitarData(doc) {
     const candidates = [];
 
-    document.querySelectorAll(".js-store[data-content], [data-content]").forEach((element) => {
+    doc.querySelectorAll(".js-store[data-content], [data-content]").forEach((element) => {
       const value = element.getAttribute("data-content");
       if (value && hasTabDataMarker(value)) candidates.push(decodeHtml(value));
     });
 
-    document.querySelectorAll("script").forEach((script) => {
+    doc.querySelectorAll("script").forEach((script) => {
       const text = script.textContent || "";
       if (!hasTabDataMarker(text)) return;
 
@@ -312,6 +370,63 @@ function extractSongFromLoadedPage() {
     }
 
     return null;
+  }
+
+  // Song, artist and key moved off tab_view and onto the sibling `tab` record.
+  function findTabInfo(value) {
+    if (!value || typeof value !== "object") return null;
+
+    const stack = [value];
+    const seen = new Set();
+
+    while (stack.length) {
+      const current = stack.pop();
+      if (!current || typeof current !== "object" || seen.has(current)) continue;
+      seen.add(current);
+
+      if (current.tab && typeof current.tab === "object" && current.tab.song_name) return current.tab;
+
+      Object.values(current).forEach((child) => {
+        if (child && typeof child === "object") stack.push(child);
+      });
+    }
+
+    return null;
+  }
+
+  // Ultimate Guitar still publishes clean metadata as schema.org JSON-LD, which
+  // survives hydration and covers pages where the tab payload cannot be read.
+  function extractJsonLdMeta() {
+    const meta = { title: "", artist: "", key: "", capo: "", tuning: "" };
+
+    for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+      let parsed = null;
+      try {
+        parsed = JSON.parse(script.textContent || "");
+      } catch {
+        continue;
+      }
+      if (!parsed || typeof parsed !== "object") continue;
+
+      const types = [parsed["@type"]].flat();
+
+      if (types.includes("MusicRecording")) {
+        meta.title = meta.title || String(parsed.name || "").trim();
+        meta.artist = meta.artist || String(parsed.byArtist?.name || "").trim();
+      }
+
+      if (types.includes("MusicComposition")) {
+        meta.artist = meta.artist || String(parsed.composer?.name || "").trim();
+        meta.key = meta.key || String(parsed.musicalKey || "").trim();
+
+        // e.g. "Difficulty: Beginner Tuning: E A D G B E Key: Db Capo: 1st fret"
+        const text = String(parsed.text || "");
+        meta.tuning = meta.tuning || (text.match(/Tuning:\s*(.+?)\s+Key:/i)?.[1] || "").trim();
+        meta.capo = meta.capo || (text.match(/Capo:\s*(\d+)\s*(?:st|nd|rd|th)?\s*fret/i)?.[1] || "").trim();
+      }
+    }
+
+    return meta;
   }
 
   function extractVisibleTabText() {
