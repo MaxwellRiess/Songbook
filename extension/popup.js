@@ -79,17 +79,15 @@ async function saveSong(song) {
   elements.appUrlInput.value = appUrl;
   chrome.storage?.local?.set({ appUrl });
 
+  // Keep retries idempotent if Chrome replaces the tab's document while the
+  // background page is still loading.
+  const songToSave = { ...song, id: song.id || crypto.randomUUID() };
   const { tab: appTab, shouldClose } = await getSongbookTab(appUrl);
-  await waitForTabComplete(appTab.id);
-  await chrome.scripting.executeScript({
-    target: { tabId: appTab.id },
-    func: importSongIntoSongbookPage,
-    args: [song]
-  });
+  await importSongWhenReady(appTab.id, songToSave);
   if (shouldClose) {
     await chrome.tabs.remove(appTab.id);
   }
-  return { song, openedApp: true };
+  return { song: songToSave, openedApp: true };
 }
 
 function renderPreview(song) {
@@ -125,38 +123,42 @@ function toMatchPattern(appUrl) {
 
 async function getSongbookTab(appUrl) {
   const existingTabs = await chrome.tabs.query({ url: toMatchPattern(appUrl) });
-  const tab = existingTabs[0] || await chrome.tabs.create({ url: appUrl, active: false });
+  const tab = existingTabs.find((candidate) => !candidate.discarded)
+    || existingTabs[0]
+    || await chrome.tabs.create({ url: appUrl, active: false });
+  if (tab.discarded) await chrome.tabs.reload(tab.id);
   return { tab, shouldClose: !existingTabs.length };
 }
 
-function waitForTabComplete(tabId) {
-  return new Promise((resolve, reject) => {
-    if (!tabId) {
-      reject(new Error("Could not open Songbook tab."));
-      return;
+async function importSongWhenReady(tabId, song) {
+  if (!tabId) throw new Error("Could not open Songbook tab.");
+
+  const deadline = Date.now() + 20000;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const [result] = await chrome.scripting.executeScript({
+        target: { tabId },
+        func: importSongIntoSongbookPage,
+        args: [song]
+      });
+      if (result?.result?.id === song.id) return result.result;
+      lastError = new Error("Songbook did not confirm the imported song.");
+    } catch (error) {
+      // A newly created or restored background tab may briefly have no document
+      // that an extension can access. Retry the operation that actually matters
+      // instead of relying on a tab-status event that Chrome can omit or delay.
+      lastError = error;
     }
+    await delay(250);
+  }
 
-    const timeoutId = setTimeout(() => {
-      chrome.tabs.onUpdated.removeListener(listener);
-      reject(new Error("Songbook did not finish loading."));
-    }, 15000);
+  throw new Error(lastError?.message || "Could not open Songbook for importing.");
+}
 
-    const listener = (updatedTabId, changeInfo) => {
-      if (updatedTabId !== tabId || changeInfo.status !== "complete") return;
-      clearTimeout(timeoutId);
-      chrome.tabs.onUpdated.removeListener(listener);
-      resolve();
-    };
-
-    chrome.tabs.onUpdated.addListener(listener);
-    chrome.tabs.get(tabId, (tab) => {
-      if (!chrome.runtime.lastError && tab?.status === "complete") {
-        clearTimeout(timeoutId);
-        chrome.tabs.onUpdated.removeListener(listener);
-        resolve();
-      }
-    });
-  });
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function importSongIntoSongbookPage(song) {

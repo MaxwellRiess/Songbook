@@ -83,9 +83,51 @@ test("normalizes GuitarTuna song details from schema.org metadata", async () => 
   assert.equal(song.rawContent, ["[Verse 1]", "   C", "as many in the air"].join("\n"));
 });
 
+test("reads GuitarTuna's current capo wording from the Sovay page", async () => {
+  const { extractSong } = await loadGuitarTunaReader();
+
+  const song = extractSong(fakeDocument({
+    heading: "Sovay easy guitar chords by James Yorkston, The Big Eyes Family Players",
+    schema: {
+      "@type": "MusicComposition",
+      name: "Sovay (chords)",
+      composer: { "@type": "Person", name: "James Yorkston, The Big Eyes Family Players" },
+      musicalKey: "C minor",
+      text: "Tuning: E A D G B E Key: C minor Capo: fret 3 Tempo: 32 BPM"
+    }
+  }));
+
+  assert.equal(song.title, "Sovay");
+  assert.equal(song.artist, "James Yorkston, The Big Eyes Family Players");
+  assert.equal(song.key, "Cm");
+  assert.equal(song.capo, "3");
+  assert.equal(song.tuning, "E A D G B E");
+});
+
+test("falls back to GuitarTuna's descriptive heading when schema metadata is absent", async () => {
+  const { extractSong } = await loadGuitarTunaReader();
+
+  const song = extractSong(fakeDocument({
+    heading: "Sovay easy guitar chords by James Yorkston, The Big Eyes Family Players",
+    schema: null
+  }));
+
+  assert.equal(song.title, "Sovay");
+  assert.equal(song.artist, "James Yorkston, The Big Eyes Family Players");
+});
+
 // A stand-in for the slice of the DOM the reader walks, so the extraction path
 // can be exercised without a browser.
-function fakeDocument() {
+function fakeDocument({
+  heading = "LITTLE MUSGRAVE chords by James Yorkston",
+  schema = {
+    "@type": "MusicComposition",
+    name: "Little Musgrave (chords)",
+    composer: { "@type": "Person", name: "James Yorkston, The Big Eyes Family Players" },
+    musicalKey: "A minor",
+    text: "Tuning: E A D G B E Key: A minor Tempo: 77 BPM"
+  }
+} = {}) {
   const chord = element({ tag: "SPAN", attributes: { "data-chord": "C " } });
   const beats = [
     element({ tag: "DIV", classes: ["beat_info"], properties: { "--w": "3" } }),
@@ -100,20 +142,14 @@ function fakeDocument() {
   });
   const root = element({ tag: "DIV", classes: ["lyrics-root"], children: [part, line] });
 
-  const jsonLd = element({
+  const jsonLd = schema ? [element({
     tag: "SCRIPT",
     attributes: { type: "application/ld+json" },
-    text: JSON.stringify({
-      "@type": "MusicComposition",
-      name: "Little Musgrave (chords)",
-      composer: { "@type": "Person", name: "James Yorkston, The Big Eyes Family Players" },
-      musicalKey: "A minor",
-      text: "Tuning: E A D G B E Key: A minor Tempo: 77 BPM"
-    })
-  });
+    text: JSON.stringify(schema)
+  })] : [];
 
-  const heading = element({ tag: "H1", text: "LITTLE MUSGRAVE chords by James Yorkston" });
-  const doc = element({ tag: "BODY", children: [heading, jsonLd, root] });
+  const headingElement = element({ tag: "H1", text: heading });
+  const doc = element({ tag: "BODY", children: [headingElement, ...jsonLd, root] });
   doc.location = { href: "https://guitartuna.com/chords/little-musgrave" };
   return doc;
 }

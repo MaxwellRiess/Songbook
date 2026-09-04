@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Songbook Clipper",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "description": "Clip loaded Ultimate Guitar and GuitarTuna chord pages into the local Lyrics & Chords Library app.",
   "action": {
     "default_title": "Clip song",

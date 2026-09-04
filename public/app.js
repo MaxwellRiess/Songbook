@@ -391,7 +391,7 @@ function renderLibraryViewControls(songs) {
     input.setAttribute("aria-label", "New playlist name");
     const button = document.createElement("button");
     button.type = "submit";
-    button.textContent = "Add";
+    button.textContent = "Create";
     form.append(input, button);
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -405,6 +405,7 @@ function renderLibraryViewControls(songs) {
     hint.textContent = selectedSong
       ? `Selected: ${selectedSong.title}`
       : "Select a song, then add it to a playlist.";
+    hint.title = hint.textContent;
     elements.libraryViewControls.append(form, hint);
     return;
   }
@@ -445,16 +446,24 @@ function renderArtistList(songs) {
     header.setAttribute("aria-expanded", String(state.expandedArtistKeys.has(group.key)));
     header.addEventListener("click", () => {
       const anchorTop = header.getBoundingClientRect().top;
-      toggleSetValue(state.expandedArtistKeys, group.key);
+      toggleExclusiveSetValue(state.expandedArtistKeys, group.key);
       renderSongList();
       restoreSongListAnchor(`[data-artist-key="${CSS.escape(group.key)}"]`, anchorTop);
     });
 
-    const label = document.createElement("strong");
-    label.textContent = group.name;
+    const label = document.createElement("span");
+    label.className = "library-group-label";
+    const name = document.createElement("strong");
+    name.textContent = group.name;
+    name.title = group.name;
     const count = document.createElement("span");
     count.textContent = `${group.songs.length} ${group.songs.length === 1 ? "song" : "songs"}`;
-    header.append(label, count);
+    const chevron = document.createElement("span");
+    chevron.className = "library-group-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = "›";
+    label.append(name, count);
+    header.append(label, chevron);
     section.append(header);
 
     if (state.expandedArtistKeys.has(group.key)) {
@@ -501,56 +510,63 @@ function renderPlaylistList(songs) {
     toggle.type = "button";
     toggle.setAttribute("aria-expanded", String(isExpanded));
     toggle.addEventListener("click", () => {
-      toggleSetValue(state.expandedPlaylistIds, playlist.id);
+      toggleExclusiveSetValue(state.expandedPlaylistIds, playlist.id);
       renderSongList();
     });
 
+    const label = document.createElement("span");
+    label.className = "library-group-label";
     const name = document.createElement("strong");
     name.textContent = playlist.name;
+    name.title = playlist.name;
     const count = document.createElement("span");
     count.textContent = `${playlistSongs.length} ${playlistSongs.length === 1 ? "song" : "songs"}`;
-    toggle.append(name, count);
-
-    const actions = document.createElement("div");
-    actions.className = "playlist-actions";
-    const addButton = document.createElement("button");
-    addButton.type = "button";
-    addButton.textContent = "+";
-    addButton.title = selectedSong ? `Add "${selectedSong.title}"` : "Select a song first";
-    addButton.setAttribute("aria-label", addButton.title);
-    addButton.disabled = !selectedSong || playlist.songIds.includes(selectedSong.id);
-    addButton.addEventListener("click", async () => {
-      if (!selectedSong) return;
-      await savePlaylist(addSongToPlaylist(playlist, selectedSong.id));
-      state.expandedPlaylistIds.add(playlist.id);
-      toast("Added to playlist");
-    });
-
-    const renameButton = document.createElement("button");
-    renameButton.type = "button";
-    renameButton.textContent = "Rename";
-    renameButton.title = `Rename "${playlist.name}"`;
-    renameButton.setAttribute("aria-label", renameButton.title);
-    renameButton.addEventListener("click", () => {
-      state.renamingPlaylistId = playlist.id;
-      renderSongList();
-    });
-
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.textContent = "x";
-    deleteButton.title = `Delete "${playlist.name}"`;
-    deleteButton.setAttribute("aria-label", deleteButton.title);
-    deleteButton.addEventListener("click", async () => {
-      await deletePlaylist(playlist);
-    });
-    actions.append(addButton, renameButton, deleteButton);
-    header.append(toggle, actions);
+    const chevron = document.createElement("span");
+    chevron.className = "library-group-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.textContent = "›";
+    label.append(name, count);
+    toggle.append(label, chevron);
+    header.append(toggle);
     section.append(header);
 
     if (isExpanded) {
       const songsContainer = document.createElement("div");
       songsContainer.className = "library-group-songs playlist-songs";
+
+      const actions = document.createElement("div");
+      actions.className = "playlist-detail-actions";
+      const addButton = document.createElement("button");
+      addButton.type = "button";
+      addButton.textContent = "Add selected";
+      addButton.title = selectedSong ? `Add "${selectedSong.title}"` : "Select a song first";
+      addButton.disabled = !selectedSong || playlist.songIds.includes(selectedSong.id);
+      addButton.addEventListener("click", async () => {
+        if (!selectedSong) return;
+        await savePlaylist(addSongToPlaylist(playlist, selectedSong.id));
+        toast("Added to playlist");
+      });
+
+      const renameButton = document.createElement("button");
+      renameButton.type = "button";
+      renameButton.textContent = "Rename";
+      renameButton.title = `Rename "${playlist.name}"`;
+      renameButton.addEventListener("click", () => {
+        state.renamingPlaylistId = playlist.id;
+        renderSongList();
+      });
+
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.textContent = "Delete";
+      deleteButton.title = `Delete "${playlist.name}"`;
+      deleteButton.className = "danger-action";
+      deleteButton.addEventListener("click", async () => {
+        await deletePlaylist(playlist);
+      });
+      actions.append(addButton, renameButton, deleteButton);
+      songsContainer.append(actions);
+
       if (!playlistSongs.length) {
         const empty = document.createElement("div");
         empty.className = "list-empty compact-empty";
@@ -613,9 +629,11 @@ function createSongRow(song) {
 
   const title = document.createElement("strong");
   title.textContent = song.title;
+  title.title = song.title;
 
   const meta = document.createElement("span");
   meta.textContent = [song.artist, song.key && `Key ${song.key}`].filter(Boolean).join(" · ");
+  meta.title = meta.textContent;
 
   button.append(title, meta);
   return button;
@@ -631,15 +649,15 @@ function createPlaylistSongRow(playlist, song, playlistSongs) {
   const actions = document.createElement("div");
   actions.className = "playlist-song-actions";
   const index = playlistSongs.findIndex((playlistSong) => playlistSong.id === song.id);
-  const upButton = createSmallActionButton("^", "Move up", async () => {
+  const upButton = createSmallActionButton("↑", "Move up", async () => {
     await savePlaylist(movePlaylistSong(playlist, song.id, -1));
   });
   upButton.disabled = index <= 0;
-  const downButton = createSmallActionButton("v", "Move down", async () => {
+  const downButton = createSmallActionButton("↓", "Move down", async () => {
     await savePlaylist(movePlaylistSong(playlist, song.id, 1));
   });
   downButton.disabled = index >= playlistSongs.length - 1;
-  const removeButton = createSmallActionButton("x", "Remove from playlist", async () => {
+  const removeButton = createSmallActionButton("Remove", "Remove from playlist", async () => {
     await savePlaylist(removeSongFromPlaylist(playlist, song.id));
     toast("Removed from playlist");
   });
@@ -682,15 +700,27 @@ async function selectSong(songId) {
 function setLibraryView(view) {
   if (!["recent", "playlists", "artists"].includes(view) || state.libraryView === view) return;
   state.libraryView = view;
+
+  const selectedSong = getSelectedSong();
+  if (view === "artists" && selectedSong) {
+    const selectedGroup = groupSongsByArtist(state.songs)
+      .find((group) => group.songs.some((song) => song.id === selectedSong.id));
+    state.expandedArtistKeys.clear();
+    if (selectedGroup) state.expandedArtistKeys.add(selectedGroup.key);
+  }
+  if (view === "playlists" && selectedSong) {
+    const selectedPlaylist = state.playlists.find((playlist) => playlist.songIds.includes(selectedSong.id));
+    state.expandedPlaylistIds.clear();
+    if (selectedPlaylist) state.expandedPlaylistIds.add(selectedPlaylist.id);
+  }
+
   renderSongList();
 }
 
-function toggleSetValue(set, value) {
-  if (set.has(value)) {
-    set.delete(value);
-  } else {
-    set.add(value);
-  }
+function toggleExclusiveSetValue(set, value) {
+  const shouldExpand = !set.has(value);
+  set.clear();
+  if (shouldExpand) set.add(value);
 }
 
 function restoreSongListAnchor(selector, previousTop) {

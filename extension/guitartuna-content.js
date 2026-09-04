@@ -120,12 +120,14 @@
 
       const text = String(parsed.text || "");
       meta.tuning = meta.tuning || (text.match(/Tuning:\s*(.+?)(?=\s+(?:Key|Capo|Tempo):|$)/i)?.[1] || "").trim();
-      meta.capo = meta.capo || (text.match(/Capo:\s*(\d+)/i)?.[1] || "");
+      // GuitarTuna currently publishes "Capo: fret 3" while older pages used
+      // "Capo: 3". Accept both forms.
+      meta.capo = meta.capo || (text.match(/Capo:\s*(?:fret\s*)?(\d+)/i)?.[1] || "");
     }
 
     // e.g. "LITTLE MUSGRAVE chords by James Yorkston, The Big Eyes Family Players"
     const heading = (doc.querySelector("h1")?.textContent || "").trim().replace(/\s+/g, " ");
-    const headingMatch = heading.match(/^(.*?)\s+(?:chords|tabs?)\s+by\s+(.*)$/i);
+    const headingMatch = heading.match(/^(.*?)\s+(?:(?:easy|simplified)\s+(?:guitar\s+)?)?(?:chords|tabs?)\s+by\s+(.*)$/i);
     if (headingMatch) {
       meta.title = meta.title || headingMatch[1].trim();
       meta.artist = meta.artist || headingMatch[2].trim();
