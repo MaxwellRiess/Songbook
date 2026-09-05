@@ -26,9 +26,15 @@ const SAMPLE_RATE = 16000;
 const WINDOW_SECONDS = 4; // audio sent to Whisper each step (shorter = fresher, less lag)
 const STEP_MS = 1000; // how often we transcribe
 const RING_SECONDS = 7; // rolling audio buffer length
-const RMS_FLOOR = 0.012; // skip near-silent windows (avoids Whisper hallucinating)
+const MIN_RMS_FLOOR = 0.006; // absolute backstop for near-silent microphone input
+const NOISE_MULTIPLIER = 2.2; // speech must rise above the learned room-noise floor
 const READING_ANCHOR = 0.3; // where the "current" line sits in the viewer (0=top)
+const READING_ZONE_START = 0.18; // don't scroll while the line remains in this comfortable zone
+const READING_ZONE_END = 0.55;
+const SCROLL_COOLDOWN_MS = 650;
 const HEARD_TAIL = 7; // only match the most recent N heard words, so the lock tracks "now" not 4s ago
+const RECOVERY_AFTER_MISSES = 3; // widen to the whole song after several uncertain windows
+const LARGE_JUMP_CONFIRMATIONS = 2; // avoid leaping on a single noisy transcription
 
 // Matcher thresholds.
 const LOOKBACK = 1; // how far back a match may land
@@ -56,7 +62,15 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     ringWritten: 0,
     stepTimer: null,
     requestId: 0,
+    loadId: 0,
+    generation: 0,
     wakeLock: null,
+    songKey: "",
+    missCount: 0,
+    pendingIndex: -1,
+    pendingCount: 0,
+    noiseFloor: 0.004,
+    lastScrollAt: 0,
     desktopModel: MODEL_DESKTOP, // active desktop model; switchable in the panel
     // Live-tunable knobs, seeded from the defaults. Exposed in the debug panel.
     tuning: {
@@ -92,9 +106,26 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
   rebuildAnchors();
 
   function rebuildAnchors() {
+    const oldAnchors = followState.anchors;
+    const oldIndex = followState.currentIndex;
+    const oldText = oldAnchors[oldIndex]?.text;
+    const nextSongKey = getSongKey(typeof getSelectedSong === "function" ? getSelectedSong() : null);
+    const sameSong = nextSongKey === followState.songKey;
+
     followState.anchors = extractAnchors(viewer);
-    followState.currentIndex = -1;
+    followState.songKey = nextSongKey;
     clearHighlight();
+
+    if (sameSong && oldText && followState.anchors.length) {
+      followState.currentIndex = findNearestTextMatch(followState.anchors, oldText, oldIndex);
+      if (followState.currentIndex !== -1) highlightAndScroll(followState.currentIndex, false);
+    } else {
+      followState.currentIndex = -1;
+      followState.missCount = 0;
+      resetPendingMatch();
+      // Invalidate a transcript that was recorded for a song which is no longer shown.
+      if (oldAnchors.length) followState.generation += 1;
+    }
     updateToggleEnabled();
     renderDebugAnchors();
   }
@@ -112,6 +143,14 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     }
     if (typeof onBeforeStart === "function") onBeforeStart();
 
+    followState.generation += 1;
+    followState.missCount = 0;
+    followState.noiseFloor = 0.004;
+    resetPendingMatch();
+    if (followState.currentIndex === -1) {
+      followState.currentIndex = indexNearestReadingAnchor(followState.anchors, viewer);
+      if (followState.currentIndex !== -1) highlightAndScroll(followState.currentIndex, false);
+    }
     followState.active = true;
     ui.panel.classList.remove("hidden");
     ui.toggle.textContent = "Stop following";
@@ -139,6 +178,8 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
 
   function stop() {
     followState.active = false;
+    followState.generation += 1;
+    resetPendingMatch();
     ui.toggle.textContent = "Follow (beta)";
     ui.toggle.classList.remove("is-active");
 
@@ -156,7 +197,11 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
   async function requestWakeLock() {
     if (!("wakeLock" in navigator)) return;
     try {
-      followState.wakeLock = await navigator.wakeLock.request("screen");
+      const lock = await navigator.wakeLock.request("screen");
+      followState.wakeLock = lock;
+      lock.addEventListener("release", () => {
+        if (followState.wakeLock === lock) followState.wakeLock = null;
+      });
     } catch (error) {
       // Non-fatal: some browsers refuse without an active gesture or on low battery.
     }
@@ -285,16 +330,29 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     followState.worker.onmessage = (event) => {
       const message = event.data;
       if (message.type === "status") {
+        if (message.loadId !== followState.loadId) return;
         setStatus(message.text);
       } else if (message.type === "ready") {
+        if (message.loadId !== followState.loadId) return;
         followState.ready = true;
         followState.loading = false;
-        setStatus(`Model ready on ${message.device}. Listening...`);
+        setStatus(
+          followState.active
+            ? `Model ready on ${message.device}. Listening...`
+            : `Model ready on ${message.device}.`
+        );
       } else if (message.type === "transcript") {
-        followState.workerBusy = false;
+        if (message.id === followState.requestId) followState.workerBusy = false;
+        if (
+          !followState.active ||
+          message.id !== followState.requestId ||
+          message.generation !== followState.generation
+        ) return;
         handleTranscript(message.text);
       } else if (message.type === "error") {
-        followState.workerBusy = false;
+        if (message.id === followState.requestId) followState.workerBusy = false;
+        if (message.loadId !== undefined && message.loadId !== followState.loadId) return;
+        if (message.generation !== undefined && message.generation !== followState.generation) return;
         setStatus(message.text);
       }
     };
@@ -310,8 +368,12 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     const mobile = isMobileDevice();
     followState.ready = false;
     followState.workerBusy = false;
+    followState.loading = true;
+    followState.generation += 1;
+    const loadId = (followState.loadId += 1);
     followState.worker.postMessage({
       type: "load",
+      loadId,
       model: mobile ? MODEL_MOBILE : followState.desktopModel,
       device: mobile ? "wasm" : "webgpu",
       dtype: mobile ? "q8" : "fp32"
@@ -334,14 +396,21 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     const audio = readWindow(followState.tuning.windowSeconds);
     if (audio.length < SAMPLE_RATE) return; // wait for at least a second of audio
 
-    if (rms(audio) < RMS_FLOOR) {
+    const level = rms(audio);
+    const silenceThreshold = Math.max(MIN_RMS_FLOOR, followState.noiseFloor * NOISE_MULTIPLIER);
+    if (level < silenceThreshold) {
+      // Learn slowly from quiet windows while retaining an absolute floor.
+      followState.noiseFloor = followState.noiseFloor * 0.9 + level * 0.1;
       setHeard("(quiet)");
       return;
     }
 
     followState.workerBusy = true;
     const id = (followState.requestId += 1);
-    followState.worker.postMessage({ type: "audio", id, audio }, [audio.buffer]);
+    followState.worker.postMessage(
+      { type: "audio", id, generation: followState.generation, audio },
+      [audio.buffer]
+    );
   }
 
   // ---- Matcher -----------------------------------------------------------
@@ -355,19 +424,78 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     // history; using the tail makes the lock reflect where the singer is now
     // rather than where they were when the window opened.
     const recent = heard.slice(-followState.tuning.heardTail);
-    const result = matchPosition(followState.anchors, followState.currentIndex, recent, {
+    let result = matchPosition(followState.anchors, followState.currentIndex, recent, {
       minOverlap: followState.tuning.minOverlap,
       margin: followState.tuning.margin
     });
+
+    const currentCandidate = result.candidates.find(
+      (candidate) => candidate.index === followState.currentIndex
+    );
+    const hasUnexplainedContext =
+      result.committedIndex === followState.currentIndex &&
+      recent.length - (currentCandidate?.overlap || 0) >= 2;
+
+    if (result.committedIndex === -1) {
+      followState.missCount += 1;
+    } else {
+      followState.missCount = 0;
+    }
+
+    // A repeated chorus can look like a confident match for the chorus we are
+    // already on. Extra transcript words that the current line cannot explain
+    // are a useful cue to compare against the full song immediately.
+    if (followState.missCount >= RECOVERY_AFTER_MISSES || hasUnexplainedContext) {
+      const recovered = matchPosition(followState.anchors, followState.currentIndex, recent, {
+        minOverlap: followState.tuning.minOverlap,
+        margin: followState.tuning.margin + 0.5,
+        global: true
+      });
+      if (
+        recovered.committedIndex !== -1 &&
+        recovered.committedIndex !== followState.currentIndex
+      ) {
+        result = recovered;
+      }
+    }
     renderCandidates(result.candidates);
 
-    if (result.committedIndex !== -1 && result.committedIndex !== followState.currentIndex) {
-      followState.currentIndex = result.committedIndex;
-      highlightAndScroll(result.committedIndex);
+    const nextIndex = result.committedIndex;
+    if (nextIndex === -1) return;
+    if (nextIndex === followState.currentIndex) {
+      resetPendingMatch();
+      return;
     }
+
+    const isLargeJump =
+      followState.currentIndex >= 0 && Math.abs(nextIndex - followState.currentIndex) > 1;
+    if (isLargeJump && !confirmPendingMatch(nextIndex)) {
+      setStatus(`Possible jump to line ${nextIndex + 1}; listening for confirmation...`);
+      return;
+    }
+
+    followState.currentIndex = nextIndex;
+    followState.missCount = 0;
+    resetPendingMatch();
+    highlightAndScroll(nextIndex);
+    setStatus(`Following line ${nextIndex + 1}.`);
   }
 
-  function highlightAndScroll(index) {
+  function resetPendingMatch() {
+    followState.pendingIndex = -1;
+    followState.pendingCount = 0;
+  }
+
+  function confirmPendingMatch(index) {
+    if (followState.pendingIndex === index) followState.pendingCount += 1;
+    else {
+      followState.pendingIndex = index;
+      followState.pendingCount = 1;
+    }
+    return followState.pendingCount >= LARGE_JUMP_CONFIRMATIONS;
+  }
+
+  function highlightAndScroll(index, allowScroll = true) {
     const anchor = followState.anchors[index];
     if (!anchor) return;
     clearHighlight();
@@ -375,11 +503,24 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
 
     const viewerRect = viewer.getBoundingClientRect();
     const elementRect = anchor.element.getBoundingClientRect();
+    const relativeTop = elementRect.top - viewerRect.top;
+    const insideReadingZone =
+      relativeTop >= viewer.clientHeight * READING_ZONE_START &&
+      relativeTop <= viewer.clientHeight * READING_ZONE_END;
+    const now = performance.now();
+    if (
+      !allowScroll ||
+      insideReadingZone ||
+      now - followState.lastScrollAt < SCROLL_COOLDOWN_MS
+    ) return;
+
     const target =
       viewer.scrollTop +
-      (elementRect.top - viewerRect.top) -
+      relativeTop -
       viewer.clientHeight * READING_ANCHOR;
-    viewer.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    viewer.scrollTo({ top: Math.max(0, target), behavior: reducedMotion ? "auto" : "smooth" });
+    followState.lastScrollAt = now;
   }
 
   function clearHighlight() {
@@ -397,6 +538,8 @@ export function initFollowMode({ viewer, getSelectedSong, onBeforeStart }) {
     const found = followState.anchors.find((anchor) => anchor.element === line);
     if (!found) return;
     followState.currentIndex = found.index;
+    followState.missCount = 0;
+    resetPendingMatch();
     highlightAndScroll(found.index);
     setStatus(`Manually set to line ${found.index + 1}.`);
   });
@@ -445,10 +588,49 @@ export function extractAnchors(viewer) {
 
 export function tokenize(text) {
   return (text || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9'\s]/g, " ")
+    .normalize("NFC")
+    .toLocaleLowerCase()
+    .replace(/’/g, "'")
+    .replace(/[^\p{L}\p{N}'\s]/gu, " ")
     .split(/\s+/)
     .filter((word) => word.length > 1);
+}
+
+function getSongKey(song) {
+  if (!song) return "";
+  if (song.id !== undefined && song.id !== null) return String(song.id);
+  return `${song.title || ""}\u0000${song.artist || ""}`;
+}
+
+function findNearestTextMatch(anchors, text, previousIndex) {
+  const normalized = tokenize(text).join(" ");
+  let closest = -1;
+  let closestDistance = Infinity;
+  for (const anchor of anchors) {
+    if (anchor.tokens.join(" ") !== normalized) continue;
+    const distance = Math.abs(anchor.index - previousIndex);
+    if (distance < closestDistance) {
+      closest = anchor.index;
+      closestDistance = distance;
+    }
+  }
+  return closest;
+}
+
+function indexNearestReadingAnchor(anchors, viewer) {
+  if (!anchors.length) return -1;
+  const viewerRect = viewer.getBoundingClientRect();
+  const target = viewerRect.top + viewer.clientHeight * READING_ANCHOR;
+  let closest = anchors[0].index;
+  let closestDistance = Infinity;
+  for (const anchor of anchors) {
+    const distance = Math.abs(anchor.element.getBoundingClientRect().top - target);
+    if (distance < closestDistance) {
+      closest = anchor.index;
+      closestDistance = distance;
+    }
+  }
+  return closest;
 }
 
 // Inverse document frequency over the song's lines: a word in few lines is
@@ -473,49 +655,105 @@ export function buildIdf(anchors) {
 export function matchPosition(anchors, currentIndex, heard, options = {}) {
   const minOverlap = options.minOverlap ?? MIN_OVERLAP;
   const margin = options.margin ?? MARGIN;
-  const heardSet = new Set(heard);
+  const global = options.global ?? false;
+  const lookback = options.lookback ?? LOOKBACK;
+  const lookahead = options.lookahead ?? LOOKAHEAD;
   const idf = buildIdf(anchors);
-  const start = Math.max(0, currentIndex < 0 ? 0 : currentIndex - LOOKBACK);
+  const start = Math.max(0, currentIndex < 0 || global ? 0 : currentIndex - lookback);
   const end = Math.min(
     anchors.length - 1,
-    currentIndex < 0 ? anchors.length - 1 : currentIndex + LOOKAHEAD
+    currentIndex < 0 || global ? anchors.length - 1 : currentIndex + lookahead
   );
 
   const candidates = [];
   for (let index = start; index <= end; index += 1) {
     const anchor = anchors[index];
-    let overlap = 0; // raw count of matched words (used for the commit floor)
-    let weighted = 0; // distinctiveness-weighted match strength (used for ranking)
-    for (const token of new Set(anchor.tokens)) {
-      const match = matchWord(token, heardSet, heard);
-      if (match.matched) {
-        overlap += 1;
-        weighted += idf(token) * match.weight; // exact = full, fuzzy = discounted
-      }
-    }
+    const own = orderedMatchScore(anchor.tokens, heard, idf);
+    const previousTokens = index > 0 ? anchors[index - 1].tokens : [];
+    const context = orderedMatchScore([...previousTokens, ...anchor.tokens], heard, idf);
+    // Previous-line evidence helps distinguish repeated choruses, but the line
+    // itself remains the dominant signal and must satisfy the overlap floor.
+    const contextBonus =
+      own.overlap > 0 ? Math.max(0, context.weighted - own.weighted) * 0.5 : 0;
     // Forward prior: reward staying or stepping forward one, penalise jumps and
-    // any backward move. Scaled to roughly one content word of evidence.
+    // backward moves. During recovery, keep the prior light enough to relock.
     let prior = 0;
     if (currentIndex >= 0) {
       const step = index - currentIndex;
-      if (step < 0) prior = -4;
-      else if (step === 0 || step === 1) prior = 1;
-      else prior = -0.8 * (step - 1);
+      if (global) prior = -0.08 * Math.abs(step);
+      else if (step < 0) prior = -3;
+      else if (step === 0) prior = 0.8;
+      else if (step === 1) prior = 0.5;
+      else prior = -0.45 * (step - 1);
     }
-    candidates.push({ index, score: weighted + prior, overlap, weighted, text: anchor.text });
+    candidates.push({
+      index,
+      score: own.weighted + contextBonus + prior,
+      overlap: own.overlap,
+      weighted: own.weighted,
+      contextBonus,
+      text: anchor.text
+    });
   }
 
-  candidates.sort((a, b) => b.score - a.score);
+  candidates.sort((a, b) => {
+    const scoreDifference = b.score - a.score;
+    if (Math.abs(scoreDifference) > 1e-9) return scoreDifference;
+    if (currentIndex < 0) return a.index - b.index;
+    return Math.abs(a.index - currentIndex) - Math.abs(b.index - currentIndex);
+  });
   const best = candidates[0];
   const second = candidates[1];
 
   let committedIndex = -1;
-  if (best && best.overlap >= minOverlap) {
+  if (best) {
+    const availableWords = new Set(anchors[best.index].tokens).size;
+    const requiredOverlap = Math.min(minOverlap, Math.max(1, availableWords));
     const beatsRunnerUp = !second || best.score - second.score >= margin;
-    if (beatsRunnerUp) committedIndex = best.index;
+    if (best.overlap >= requiredOverlap && beatsRunnerUp) committedIndex = best.index;
   }
 
   return { committedIndex, candidates };
+}
+
+// Weighted longest-common-subsequence alignment. Unlike a bag of words, this
+// rewards lyric words in their sung order and still tolerates omissions.
+function orderedMatchScore(candidateTokens, heardTokens, idf) {
+  let previous = Array.from({ length: heardTokens.length + 1 }, () => ({ weighted: 0, overlap: 0 }));
+
+  for (const token of candidateTokens) {
+    const current = [{ weighted: 0, overlap: 0 }];
+    for (let heardIndex = 1; heardIndex <= heardTokens.length; heardIndex += 1) {
+      const fromCandidateSkip = previous[heardIndex];
+      const fromHeardSkip = current[heardIndex - 1];
+      let best = betterAlignment(fromCandidateSkip, fromHeardSkip);
+      const weight = wordMatchWeight(token, heardTokens[heardIndex - 1]);
+      if (weight > 0) {
+        const diagonal = previous[heardIndex - 1];
+        // A rolling transcript describes a path through the lyrics. Weight its
+        // final words more heavily so the selected line is where the singer is
+        // now, rather than the line at the beginning of the audio window.
+        const recency = 0.6 + heardIndex / heardTokens.length;
+        const matched = {
+          weighted: diagonal.weighted + (0.55 + idf(token)) * weight * recency,
+          overlap: diagonal.overlap + 1
+        };
+        best = betterAlignment(best, matched);
+      }
+      current.push(best);
+    }
+    previous = current;
+  }
+
+  return previous[heardTokens.length] || { weighted: 0, overlap: 0 };
+}
+
+function betterAlignment(first, second) {
+  if (second.weighted > first.weighted + 1e-9) return second;
+  if (Math.abs(second.weighted - first.weighted) <= 1e-9 && second.overlap > first.overlap) {
+    return second;
+  }
+  return first;
 }
 
 // Does a line word match anything heard? Exact first, then a capped edit-distance
@@ -523,14 +761,21 @@ export function matchPosition(anchors, currentIndex, heard, options = {}) {
 // still count, at a discount.
 export function matchWord(token, heardSet, heardList) {
   if (heardSet.has(token)) return { matched: true, weight: 1 };
-  const maxDistance = token.length <= 4 ? 1 : 2;
   for (const heardWord of heardList) {
-    if (Math.abs(heardWord.length - token.length) > maxDistance) continue;
-    if (boundedLevenshtein(token, heardWord, maxDistance) <= maxDistance) {
-      return { matched: true, weight: 0.6 };
-    }
+    const weight = wordMatchWeight(token, heardWord);
+    if (weight > 0) return { matched: true, weight };
   }
   return { matched: false, weight: 0 };
+}
+
+function wordMatchWeight(token, heardWord) {
+  if (token === heardWord) return 1;
+  // A one-letter edit changes most of a very short word (me/be, go/no), so
+  // fuzzy matching there creates far more false positives than recoveries.
+  if (token.length <= 3 || heardWord.length <= 3) return 0;
+  const maxDistance = token.length >= 8 && heardWord.length >= 8 ? 2 : 1;
+  if (Math.abs(heardWord.length - token.length) > maxDistance) return 0;
+  return boundedLevenshtein(token, heardWord, maxDistance) <= maxDistance ? 0.6 : 0;
 }
 
 // Levenshtein distance with an early exit once the best possible score on a row

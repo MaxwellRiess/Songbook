@@ -13,37 +13,65 @@ env.allowLocalModels = false;
 
 let transcriber = null;
 let activeDevice = "";
+let activeLoadId = 0;
 
-async function load(model, device, dtype) {
-  postMessage({ type: "status", text: `Loading ${model} (${device}/${dtype})...` });
+async function load(model, device, dtype, loadId) {
+  postMessage({ type: "status", loadId, text: `Loading ${model} (${device}/${dtype})...` });
+
+  let nextTranscriber;
+  let nextDevice;
 
   // Try the requested device/precision, then fall back to the lightest stable
   // option (WASM + q8). On mobile the caller asks for WASM/q8 directly, which
   // uses far less memory than WebGPU/fp32 and avoids iOS GPU-process crashes.
   try {
-    transcriber = await pipeline("automatic-speech-recognition", model, { device, dtype });
-    activeDevice = device;
+    nextTranscriber = await pipeline("automatic-speech-recognition", model, { device, dtype });
+    nextDevice = device;
   } catch (primaryError) {
     if (device === "wasm" && dtype === "q8") throw primaryError;
-    postMessage({ type: "status", text: "Falling back to WASM/q8 (lighter)..." });
-    transcriber = await pipeline("automatic-speech-recognition", model, {
+    postMessage({
+      type: "status",
+      loadId,
+      text: "Falling back to WASM/q8 (lighter)..."
+    });
+    nextTranscriber = await pipeline("automatic-speech-recognition", model, {
       device: "wasm",
       dtype: "q8"
     });
-    activeDevice = "wasm";
+    nextDevice = "wasm";
   }
 
-  postMessage({ type: "ready", device: activeDevice, model });
+  // A model switch may have started while this download was in flight. Never
+  // let the older completion silently replace the newer requested model.
+  if (loadId !== activeLoadId) {
+    if (typeof nextTranscriber?.dispose === "function") await nextTranscriber.dispose();
+    return;
+  }
+
+  const previousTranscriber = transcriber;
+  transcriber = nextTranscriber;
+  activeDevice = nextDevice;
+  if (previousTranscriber && typeof previousTranscriber.dispose === "function") {
+    await previousTranscriber.dispose();
+  }
+  postMessage({ type: "ready", loadId, device: activeDevice, model });
 }
 
 onmessage = async (event) => {
   const message = event.data;
 
   if (message.type === "load") {
+    activeLoadId = message.loadId;
     try {
-      await load(message.model, message.device || "wasm", message.dtype || "q8");
+      await load(message.model, message.device || "wasm", message.dtype || "q8", message.loadId);
     } catch (error) {
-      postMessage({ type: "error", text: `Model load failed: ${String(error)}` });
+      if (message.loadId === activeLoadId) {
+        postMessage({
+          type: "error",
+          loadId: message.loadId,
+          text: `Model load failed: ${String(error)}`
+        });
+      }
     }
     return;
   }
@@ -55,10 +83,16 @@ onmessage = async (event) => {
       postMessage({
         type: "transcript",
         id: message.id,
+        generation: message.generation,
         text: (output.text || "").trim()
       });
     } catch (error) {
-      postMessage({ type: "error", id: message.id, text: `Transcribe failed: ${String(error)}` });
+      postMessage({
+        type: "error",
+        id: message.id,
+        generation: message.generation,
+        text: `Transcribe failed: ${String(error)}`
+      });
     }
   }
 };
