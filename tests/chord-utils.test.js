@@ -16,3 +16,8 @@ test("allows separator punctuation without treating lyric text as chords", () =>
 test("transposes grouped transition chords without removing grouping punctuation", () => {
   assert.equal(transposeChordLine("D (A/C# Bm) G", 2), "E (B/D# C#m) A");
 });
+
+test("recognizes a single complex extension without an arbitrary symbol-length limit", () => {
+  assert.equal(isPlainChordLine("C#maj9#11/E#"), true);
+  assert.equal(isPlainChordLine("Come along now"), false);
+});

@@ -27,11 +27,15 @@ import {
 } from "./library-model.js";
 import { buildMetaPills, normalizeSong, toPlainChordSheet } from "./song-model.js";
 import { detectSongConflicts, mergePlaylists, mergeSongs } from "./song-sync.js";
-import { renderSheet as buildSheetFragment } from "./song-renderer.js";
+import { renderSheet as buildSheetFragment, renderedSheetText } from "./song-renderer.js";
 import { initFollowMode } from "./follow-mode.js";
 import { closeChordPopover, initChordPopover } from "./chord-popover.js";
 import { collectSongChords, initChordExplorer } from "./chord-explorer.js";
 import { initTuner } from "./tuner.js";
+import { ReharmonizationDrafts } from "./reharmonize.js";
+import { transposeChord } from "./chord-utils.js";
+
+const reharmonizationDrafts = new ReharmonizationDrafts();
 
 const state = {
   songs: [],
@@ -93,6 +97,10 @@ const elements = {
   fontSizeValue: document.querySelector("#fontSizeValue"),
   fontSizeDown: document.querySelector("#fontSizeDown"),
   fontSizeUp: document.querySelector("#fontSizeUp"),
+  reharmDraft: document.querySelector("#reharmDraft"),
+  reharmSummary: document.querySelector("#reharmSummary"),
+  resetChordsButton: document.querySelector("#resetChordsButton"),
+  saveReharmButton: document.querySelector("#saveReharmButton"),
   modeSelect: document.querySelector("#modeSelect"),
   sidebarScrim: document.querySelector("#sidebarScrim"),
   autoscrollControls: document.querySelector("#autoscrollControls"),
@@ -167,9 +175,30 @@ initFollowMode({
   getSelectedSong,
   onBeforeStart: stopAutoscroll
 });
-initChordPopover(elements.viewer);
+initChordPopover(elements.viewer, {
+  getContext: token => {
+    const nextId = Number(token.dataset.chordId) + 1;
+    const next = elements.viewer.querySelector(`[data-chord-id="${nextId}"]`);
+    return { nextChord: next?.dataset.chord || "" };
+  },
+  onReplace: (token, alternative) => {
+    const song = getSelectedSong();
+    if (!song) return;
+    const id = Number(token.dataset.chordId);
+    const draft = reharmonizationDrafts.forSong(song);
+    if (alternative === null) draft.delete(id);
+    else draft.set(id, transposeChord(alternative, -state.transpose));
+    stopAutoscroll();
+    const scroll = elements.viewer.scrollTop;
+    renderSheet(song);
+    elements.viewer.scrollTop = scroll;
+    const replacement = [...elements.viewer.querySelectorAll(`[data-chord-id="${id}"]`)].find(item => item.getClientRects().length);
+    replacement?.focus({ preventScroll: true });
+    toast(alternative === null ? "Original chord restored" : `Trying ${alternative} in this position. Original song unchanged.`);
+  }
+});
 initChordExplorer({
-  getSongChords: () => collectSongChords(getSelectedSong(), state.transpose)
+  getSongChords: () => collectSongChords(getDraftSong(), state.transpose)
 });
 initTuner();
 
@@ -187,6 +216,20 @@ async function loadLibrary() {
 }
 
 function bindEvents() {
+  elements.resetChordsButton.addEventListener("click", () => {
+    const song = getSelectedSong();
+    if (!song) return;
+    reharmonizationDrafts.forSong(song).clear();
+    const scroll = elements.viewer.scrollTop;
+    renderSheet(song);
+    elements.viewer.scrollTop = scroll;
+    toast("All original chords restored");
+  });
+  elements.saveReharmButton.addEventListener("click", () => {
+    const song = getDraftSong();
+    if (!song) return;
+    openSongDialog({ ...song, id: null, title: `${song.title} (reharmonized)` });
+  });
   elements.searchInput.addEventListener("input", () => {
     state.query = elements.searchInput.value.trim().toLowerCase();
     renderSongList();
@@ -795,6 +838,7 @@ async function renamePlaylist(playlist, nextName) {
 function renderSelectedSong() {
   const song = getSelectedSong();
   const hasSong = Boolean(song);
+  updateReharmonizationControls(song);
   // A freshly rendered sheet starts scrolled to the top, so expand the header.
   elements.songPanel.classList.remove("is-condensed");
   renderHeaderPlaylistPicker(song);
@@ -893,7 +937,22 @@ function closeHeaderPlaylistMenu() {
 
 function renderSheet(song) {
   closeChordPopover();
-  elements.viewer.replaceChildren(buildSheetFragment(song, state.transpose));
+  elements.viewer.replaceChildren(buildSheetFragment(song, state.transpose, reharmonizationDrafts.forSong(song)));
+  updateReharmonizationControls(song);
+}
+
+function getDraftSong() {
+  const song = getSelectedSong();
+  if (!song) return null;
+  const draft = reharmonizationDrafts.forSong(song);
+  return draft.size ? { ...song, rawContent: renderedSheetText(song, 0, draft) } : song;
+}
+
+function updateReharmonizationControls(song) {
+  const count = reharmonizationDrafts.forSong(song).size;
+  elements.reharmDraft.hidden = !count;
+  elements.reharmDraft.closest(".toolbar").classList.toggle("has-reharmonization", count > 0);
+  elements.reharmSummary.textContent = `${count} chord ${count === 1 ? "change" : "changes"} · draft`;
 }
 
 function startAutoscroll() {
@@ -1516,7 +1575,7 @@ function isPlaylistIdTypeError(error) {
 
 function openSongDialog(song = null) {
   state.editingId = song?.id || null;
-  elements.dialogTitle.textContent = song ? "Edit song" : "New song";
+  elements.dialogTitle.textContent = state.editingId ? "Edit song" : "New song";
   elements.titleInput.value = song?.title || "";
   elements.artistInput.value = song?.artist || "";
   elements.keyInput.value = song?.key || "";
@@ -1623,7 +1682,7 @@ async function removeSongFromAllPlaylists(songId) {
 }
 
 async function copySelectedSong() {
-  const song = getSelectedSong();
+  const song = getDraftSong();
   if (!song) return;
   await navigator.clipboard.writeText(toPlainChordSheet(song));
   toast("Copied song");

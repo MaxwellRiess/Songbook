@@ -1631,3 +1631,44 @@ textarea {
   font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
 }
+
+/* Reharmonization: changes are attached to occurrences, not chord names. */
+.chord-token:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.chord-token.is-reharmonized { text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 5px; }
+.chord-lyric-pair.is-reharmonized .pair-desktop-chords,
+.chord-lyric-pair.is-reharmonized .pair-desktop-lyrics { display: none; }
+.chord-lyric-pair.is-reharmonized .mobile-flow-line { display: flex; flex-wrap: wrap; gap: 6px 10px; }
+.chord-lyric-pair.is-reharmonized .mobile-flow-segment { display: inline-grid; grid-template-rows: auto auto; }
+.chord-lyric-pair.is-reharmonized .mobile-flow-chord,
+.chord-lyric-pair.is-reharmonized .mobile-flow-lyric { white-space: pre-wrap; }
+.chord-lyric-pair.is-reharmonized .mobile-flow-chord { color: var(--accent-strong); font-weight: 700; }
+.chord-popover.is-reharmonizing { width: min(400px, calc(100vw - 20px)); }
+.chord-popover { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
+.chord-popover.is-reharmonizing .chord-diagram { max-width: 102px; }
+.chord-popover.is-pinned .chord-popover-close { display: block; min-width: 30px; min-height: 30px; }
+.chord-popover .reharm-toggle { width: 100%; min-height: 38px; margin-top: 12px; }
+.chord-popover .reharm-toggle[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent); }
+.reharm-panel { margin-top: 12px; }
+.reharm-panel[hidden], .reharm-draft[hidden], .reharm-reset[hidden] { display: none; }
+.reharm-context { font-size: 13px; font-weight: 650; margin-bottom: 7px; }
+.reharm-hint, .reharm-detail { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.reharm-options { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; max-height: 188px; overflow-y: auto; margin: 12px 0; padding: 3px; overscroll-behavior: contain; }
+.chord-popover .reharm-option { display: grid; align-content: start; text-align: left; gap: 3px; padding: 9px 11px; border-radius: 10px; min-height: 78px; }
+.reharm-option strong { color: var(--accent-strong); font-size: 16px; }
+.reharm-option span { color: var(--ink); font-size: 12px; }
+.reharm-option small { color: var(--muted); font-size: 10px; }
+.chord-popover .reharm-option[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.reharm-detail { min-height: 36px; }
+.reharm-audio { display: flex; gap: 8px; margin: 12px 0 6px; }
+.reharm-audio button { flex: 1; min-width: 0; padding: 6px 8px; font-size: 12px; min-height: 40px; }
+.reharm-audio-note, .reharm-session { font-size: 11px; line-height: 1.4; color: var(--muted); }
+.chord-popover .reharm-apply { width: 100%; margin: 12px 0 6px; background: var(--accent-soft); color: var(--accent-strong); }
+.chord-popover .reharm-reset { width: 100%; margin: 0 0 8px; }
+.reharm-status { color: var(--accent-strong); font-size: 12px; margin-top: 6px; }
+.toolbar.has-reharmonization { flex-wrap: wrap; max-height: none; }
+.reharm-draft { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; padding-top: 8px; border-top: 1px solid var(--line); }
+.reharm-draft span { color: var(--muted); font-size: 12px; margin-right: auto; }
+.reharm-draft button { font-size: 12px; min-height: 36px; }
+@media (max-width: 600px), (hover: none) {
+  .chord-popover.is-reharmonizing { left: 10px !important; right: 10px; bottom: 12px; top: auto !important; width: auto; max-height: calc(100dvh - 24px); }
+}

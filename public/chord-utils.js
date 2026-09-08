@@ -35,7 +35,7 @@ export function isPlainChordLine(line) {
   if (!musicalTokens.length) return false;
 
   const chordTokens = musicalTokens.filter(isChordToken);
-  return chordTokens.length === musicalTokens.length && (chordTokens.length > 1 || line.trim().length <= 8);
+  return chordTokens.length === musicalTokens.length;
 }
 
 export function isChordToken(token) {

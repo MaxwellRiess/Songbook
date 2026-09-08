@@ -1,7 +1,8 @@
-import { isChordToken, isPlainChordLine, transposeChord, transposeChordLine } from "./chord-utils.js";
+import { isChordToken, isPlainChordLine, transposeChord } from "./chord-utils.js";
 import { removeUgTags, stripTabTags } from "./song-model.js";
 
-export function renderSheet(song, transpose) {
+export function renderSheet(song, transpose, replacements = new Map()) {
+  const context = { next: 0, replacements };
   const fragment = document.createDocumentFragment();
   const normalized = stripTabTags(song.rawContent || "");
   const lines = normalized.split("\n");
@@ -11,20 +12,20 @@ export function renderSheet(song, transpose) {
     const nextLine = lines[index + 1] || "";
     const cleanedLine = removeUgTags(line);
 
-    if (isPlainChordLine(cleanedLine) && nextLine.trim() && !isPlainChordLine(removeUgTags(nextLine))) {
-      fragment.append(renderResponsiveChordLyricPair(cleanedLine, removeUgTags(nextLine), transpose));
+    if (isPlainChordLine(cleanedLine) && nextLine.trim() && !/^\[[^\]]+\]$/.test(nextLine.trim()) && !isPlainChordLine(removeUgTags(nextLine))) {
+      fragment.append(renderResponsiveChordLyricPair(cleanedLine, removeUgTags(nextLine), transpose, context));
       index += 1;
       continue;
     }
 
-    const row = renderLine(line, transpose);
+    const row = renderLine(line, transpose, context);
     fragment.append(row);
   }
 
   return fragment;
 }
 
-function renderLine(line, transpose) {
+function renderLine(line, transpose, context) {
   const sectionMatch = line.trim().match(/^\[([^\]]+)\]$/);
   if (sectionMatch && !/ch\]/i.test(line)) {
     const section = document.createElement("div");
@@ -37,7 +38,7 @@ function renderLine(line, transpose) {
   if (isPlainChordLine(cleanedLine)) {
     const chordLine = document.createElement("div");
     chordLine.className = "sheet-line plain-chord-line";
-    appendChordTokens(chordLine, transposeChordLine(cleanedLine, transpose));
+    appendChordTokens(chordLine, cleanedLine, transpose, context);
     return chordLine;
   }
 
@@ -56,24 +57,27 @@ function renderLine(line, transpose) {
   if (!parsed.lyrics.trim()) {
     const chordLine = document.createElement("div");
     chordLine.className = "sheet-line plain-chord-line";
-    appendChordTokens(chordLine, transposeChordLine(unwrapChordTags(cleanedLine), transpose));
+    appendChordTokens(chordLine, unwrapChordTags(cleanedLine), transpose, context);
     return chordLine;
   }
 
-  return renderResponsiveChordLyricPair(parsed.chords, parsed.lyrics, transpose);
+  return renderResponsiveChordLyricPair(parsed.chords, parsed.lyrics, transpose, context);
 }
 
 function unwrapChordTags(value) {
-  return value.replace(/\[ch\]([\s\S]*?)\[\/ch\]/gi, "$1");
+  return value.replace(/\[\/ch\]\[ch\]/gi, " ").replace(/\[\/?ch\]/gi, "");
 }
 
-function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose) {
+function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose, context) {
+  const start = context.next;
   const wrapper = document.createElement("div");
   wrapper.className = "sheet-line chord-lyric-pair";
 
   const desktopChordLine = document.createElement("div");
   desktopChordLine.className = "plain-chord-line pair-desktop-chords";
-  appendChordTokens(desktopChordLine, transposeChordLine(chordLine, transpose));
+  appendChordTokens(desktopChordLine, chordLine, transpose, context);
+  const mobileContext = { ...context, next: start };
+  wrapper.classList.toggle("is-reharmonized", [...context.replacements.keys()].some(id => id >= start && id < context.next));
 
   const desktopLyricLine = document.createElement("div");
   desktopLyricLine.className = "pair-desktop-lyrics";
@@ -82,14 +86,14 @@ function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose) {
   const mobileLine = document.createElement("div");
   mobileLine.className = "mobile-flow-line";
 
-  buildMobileChordLyricSegments(chordLine, lyricLine, transpose).forEach((segment) => {
+  buildMobileChordLyricSegments(chordLine, lyricLine, 0).forEach((segment) => {
     const item = document.createElement("span");
     item.className = "mobile-flow-segment";
 
     const chord = document.createElement("span");
     chord.className = "mobile-flow-chord";
     chord.textContent = segment.chord || "\u00a0";
-    if (segment.chord) markChordToken(chord, segment.chord);
+    if (segment.chord && isChordToken(segment.chord)) markChordToken(chord, segment.chord, transpose, mobileContext);
 
     const lyric = document.createElement("span");
     lyric.className = "mobile-flow-lyric";
@@ -105,7 +109,7 @@ function renderResponsiveChordLyricPair(chordLine, lyricLine, transpose) {
 
 /* Splits a rendered chord line into text and tappable chord spans. Whitespace is
    emitted verbatim so the monospaced alignment with the lyric line is untouched. */
-function appendChordTokens(container, text) {
+function appendChordTokens(container, text, transpose, context) {
   const tokenRegex = /\S+/g;
   let cursor = 0;
   let match;
@@ -118,7 +122,7 @@ function appendChordTokens(container, text) {
       const span = document.createElement("span");
       span.className = "chord-token";
       span.textContent = token;
-      markChordToken(span, token);
+      markChordToken(span, token, transpose, context);
       container.append(span);
     } else {
       container.append(token);
@@ -130,15 +134,34 @@ function appendChordTokens(container, text) {
   if (cursor < text.length) container.append(text.slice(cursor));
 }
 
-function markChordToken(element, token) {
+function markChordToken(element, token, transpose, context) {
+  const id = context.next++;
+  const changed = context.replacements.has(id);
+  const replacement = changed ? preserveChordGrouping(token, context.replacements.get(id)) : token;
+  const displayed = transposeChord(replacement, transpose);
+  element.textContent = displayed;
+  element.dataset.chordId = String(id);
+  element.dataset.sourceChord = token;
+  element.dataset.originalChord = transposeChord(token, transpose);
+  element.classList.toggle("is-reharmonized", changed);
+  element.tabIndex = 0;
   element.classList.add("chord-token");
-  element.dataset.chord = token;
+  element.dataset.chord = displayed;
   element.setAttribute("role", "button");
-  element.setAttribute("aria-label", `${token} chord shape`);
+  element.setAttribute("aria-label", `${displayed} chord shape${changed ? `, reharmonized from ${transposeChord(token, transpose)}` : ""}`);
+}
+
+function preserveChordGrouping(token, replacement) {
+  const prefix = token.match(/^[([{]+/)?.[0] || "";
+  // Only carry grouping brackets, not parentheses enclosing chord alterations.
+  const withoutAlterations = token.slice(prefix.length).replace(/\([^)]*\)/g, "");
+  const suffix = withoutAlterations.match(/[)\]},.;:]+$/)?.[0] || "";
+  return `${prefix}${replacement}${suffix}`;
 }
 
 function buildMobileChordLyricSegments(chordLine, lyricLine, transpose) {
-  const chordMatches = [...chordLine.matchAll(/\S+/g)].filter((match) => isChordToken(match[0]));
+  // Keep bar lines, repeat counts and N.C. alongside the playable chords.
+  const chordMatches = [...chordLine.matchAll(/\S+/g)];
   if (!chordMatches.length) return [{ chord: "", lyric: lyricLine.trim() }];
 
   const snapToWordStart = (rawPos) => {
@@ -161,7 +184,7 @@ function buildMobileChordLyricSegments(chordLine, lyricLine, transpose) {
     const end = i + 1 < chordMatches.length ? positions[i + 1] : lyricLine.length;
     const lyric = lyricLine.slice(start, end).trim();
     segments.push({
-      chord: transposeChord(chordMatches[i][0], transpose),
+      chord: isChordToken(chordMatches[i][0]) ? transposeChord(chordMatches[i][0], transpose) : chordMatches[i][0],
       lyric
     });
   }
@@ -184,6 +207,11 @@ function parseChordLine(line, transpose) {
     lyricPosition += lyricPart.length;
 
     const chord = transposeChord(match[1], transpose);
+    if (hasChords && chords.length >= lyricPosition) {
+      const gap = " ".repeat(chords.length - lyricPosition + 1);
+      lyrics += gap;
+      lyricPosition += gap.length;
+    }
     chords = padEnd(chords, lyricPosition);
     chords += chord;
     hasChords = true;
@@ -200,3 +228,23 @@ function padEnd(value, length) {
   return value.length >= length ? value : `${value}${" ".repeat(length - value.length)}`;
 }
 
+
+// Export drafts as ordinary chords-over-lyrics text, spacing both rows together
+// so a long extension cannot move the next chord away from its lyric.
+export function renderedSheetText(song, transpose = 0, replacements = new Map()) {
+  const fragment = renderSheet(song, transpose, replacements);
+  return [...fragment.children].map(row => {
+    if (row.classList.contains("chord-lyric-pair")) {
+      let chords = "", lyrics = "";
+      row.querySelectorAll(".mobile-flow-segment").forEach(segment => {
+        const chord = segment.querySelector(".mobile-flow-chord").textContent.trim();
+        const lyric = segment.querySelector(".mobile-flow-lyric").textContent.trim();
+        const width = Math.max(chord.length, lyric.length) + 1;
+        chords += chord.padEnd(width); lyrics += lyric.padEnd(width);
+      });
+      return `${chords.trimEnd()}\n${lyrics.trimEnd()}`;
+    }
+    if (row.classList.contains("section-label")) return `[${row.textContent}]`;
+    return row.textContent;
+  }).join("\n");
+}

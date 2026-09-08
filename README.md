@@ -30,12 +30,38 @@ start with the system appearance.
 - Transpose chords in the viewer without changing the saved original
 - Hover a chord (or tap it on a phone) to see how to play it, and step through
   voicings from the open shape up the neck
+- Toggle **Re-harmonize** inside a chord popup to explore major/minor swaps,
+  extended chords, and substitutions; hear a preview and replace that occurrence
 - Look up any chord from the **Chords** button in the header, with every voicing
   shown at once, and optional inversions and shapes with muted inner strings
 - Tune by ear from the **Tuner** panel in the sidebar, which plays the six
   concert pitches of standard tuning (E2 A2 D3 G3 B3 E4, A4 = 440 Hz)
 - Copy the stored chord sheet
 - Import from Ultimate Guitar URLs when the page HTML is accessible
+
+## Reharmonizing a song
+
+Click or tap a chord, then turn on **Re-harmonize**. Alternatives range from
+gentler additions (sevenths, ninths, sixths) to bolder parallel major/minor swaps,
+raised elevenths, altered dominants and tritone substitutions. Each choice explains
+its effect and shows shared, added and removed chord tones. The next chord supplies
+local context for dominant approaches. Suggestions are harmonic possibilities;
+the app does not analyze the melody or guarantee a substitution will fit it.
+
+Select a suggestion to inspect its guitar shapes and compare **Hear original** with
+**Hear [chord]**. Audio uses a synthesized standard-tuning voicing without capo.
+**Use this chord** changes only that occurrence and marks it with a dotted underline.
+Transpose continues to work on the arrangement. Reopen the chord to **Restore
+original chord**, or use **Reset chords** to clear all replacements for the song.
+
+Drafts stay available while switching songs in the current tab, but are cleared on
+reload or when the underlying sheet changes. **Copy** includes the draft; **Save new
+version** opens a prefilled new-song form so you can name and keep the arrangement
+without overwriting the original. Copies and saved versions retain the original
+key and capo, independent of the viewer's transpose setting.
+
+The substitution vocabulary draws on [Open Music Theory's discussion of jazz
+substitutions](https://viva.pressbooks.pub/openmusictheory/chapter/substitutions/).
 
 ## GitHub Pages
 
