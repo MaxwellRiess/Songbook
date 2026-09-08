@@ -93,7 +93,7 @@ const elements = {
   fontSizeValue: document.querySelector("#fontSizeValue"),
   fontSizeDown: document.querySelector("#fontSizeDown"),
   fontSizeUp: document.querySelector("#fontSizeUp"),
-  themeSelect: document.querySelector("#themeSelect"),
+  modeSelect: document.querySelector("#modeSelect"),
   sidebarScrim: document.querySelector("#sidebarScrim"),
   autoscrollControls: document.querySelector("#autoscrollControls"),
   autoscrollToggle: document.querySelector("#autoscrollToggle"),
@@ -128,9 +128,6 @@ const elements = {
 
 const SUPABASE_CONFIG_KEY = "songbook.supabase.config";
 const SIDEBAR_COLLAPSED_KEY = "songbook.sidebar.collapsed";
-const THEME_KEY = "songbook.theme";
-const DEFAULT_THEME = "stage";
-const THEMES = ["vintage", "zine", "analog", "stage", "editorial"];
 const AUTOSCROLL_MIN_SPEED = 8;
 const AUTOSCROLL_MAX_SPEED = 100;
 const AUTOSCROLL_CURVE = 2;
@@ -155,7 +152,7 @@ if (clippedSong) {
   }
 }
 restoreSidebarState();
-restoreTheme();
+elements.modeSelect.value = document.documentElement.dataset.mode;
 bindEvents();
 updateTransposeDisplay();
 updateFontSizeDisplay();
@@ -207,8 +204,8 @@ function bindEvents() {
 
   elements.sidebarScrim.addEventListener("click", () => setSidebarCollapsed(true));
 
-  elements.themeSelect.addEventListener("change", () => {
-    applyTheme(elements.themeSelect.value);
+  elements.modeSelect.addEventListener("change", () => {
+    window.SongbookAppearance.apply(elements.modeSelect.value);
   });
 
   elements.newSongButton.addEventListener("click", () => openSongDialog());
@@ -1795,43 +1792,6 @@ function restoreSidebarState() {
   // On mobile the library is a slide-in overlay; start it dismissed so the song shows first.
   if (isMobileViewport()) collapsed = true;
   setSidebarCollapsed(collapsed);
-}
-
-function applyTheme(name) {
-  const theme = THEMES.includes(name) ? name : "";
-  let link = document.querySelector("#themeStylesheet");
-  if (!theme) {
-    if (link) link.remove();
-  } else {
-    if (!link) {
-      link = document.createElement("link");
-      link.id = "themeStylesheet";
-      link.rel = "stylesheet";
-      document.head.append(link);
-    }
-    link.href = `themes/${theme}.css`;
-  }
-  try {
-    if (theme) {
-      localStorage.setItem(THEME_KEY, theme);
-    } else {
-      localStorage.removeItem(THEME_KEY);
-    }
-  } catch (error) {
-    // localStorage may be unavailable; the theme still applies for this session.
-  }
-}
-
-function restoreTheme() {
-  let theme = DEFAULT_THEME;
-  try {
-    theme = localStorage.getItem(THEME_KEY) || DEFAULT_THEME;
-  } catch (error) {
-    theme = DEFAULT_THEME;
-  }
-  if (!THEMES.includes(theme)) theme = DEFAULT_THEME;
-  elements.themeSelect.value = theme;
-  applyTheme(theme);
 }
 
 function toast(message, isError = false) {

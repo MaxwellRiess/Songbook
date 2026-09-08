@@ -12,6 +12,13 @@ Open `http://127.0.0.1:3000`.
 
 The app also runs as a static PWA from the `public/` folder, which is what GitHub Pages uses.
 
+## Appearance
+
+Songbook uses Pebble, with **Light** and **Dark** choices under **Settings and
+syncing → Appearance**. The choice is saved on this device. Existing Stage Mode
+users stay in dark mode; other legacy themes become light. New installations
+start with the system appearance.
+
 ## Features
 
 - Store songs locally in browser IndexedDB

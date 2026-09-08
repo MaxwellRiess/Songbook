@@ -1,8 +1,9 @@
-const CACHE_NAME = "songbook-v20";
+const CACHE_NAME = "songbook-v21";
 const APP_SHELL = [
   "./",
   "index.html",
   "styles.css",
+  "appearance.js",
   "app.js",
   "backup.js",
   "chord-utils.js",
@@ -21,11 +22,7 @@ const APP_SHELL = [
   "icon-512.png",
   "icon-1024.png",
   "apple-touch-icon.png",
-  "themes/analog.css",
-  "themes/editorial.css",
-  "themes/stage.css",
-  "themes/vintage.css",
-  "themes/zine.css"
+  "themes/pebble.css"
 ];
 
 self.addEventListener("install", (event) => {

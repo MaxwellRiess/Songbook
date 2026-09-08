@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Songbook — Three directions</title><link rel="icon" href="../icon.svg"><link rel="stylesheet" href="preview.css"><script type="module" src="preview.js"></script></head>
+<body>
+<header class="intro"><div><p class="kicker">SONGBOOK / DESIGN STUDIES</p><h1>A little more feeling.</h1></div><p class="intro-note">Three directions. One familiar songbook.<br>Choose a look, then try it in light and dark.</p></header>
+<main>
+<div class="directions" role="group" aria-label="Design direction">
+<button class="direction" data-design="folio" aria-pressed="true"><span class="card-top"><span class="number">01</span><span class="swatches folio"><i></i><i></i><i></i></span></span><strong class="folio-title">Folio</strong><span>Textured paper. Layered menus. Warm ink.</span><small>PAPER GRAIN · CUT EDGES · LAYERS</small></button>
+<button class="direction" data-design="studio" aria-pressed="false"><span class="card-top"><span class="number">02</span><span class="swatches studio"><i></i><i></i><i></i></span></span><strong class="studio-title">Studio</strong><span>Brushed surfaces. Precise, satisfying controls.</span><small>PRECISE · COOL · INSTRUMENTAL</small></button>
+<button class="direction" data-design="pebble" aria-pressed="false"><span class="card-top"><span class="number">03</span><span class="swatches pebble"><i></i><i></i><i></i></span></span><strong class="pebble-title">Pebble</strong><span>Soft ceramic. Rounded edges. Room to breathe.</span><small>SOFT · CALM · FRIENDLY</small></button>
+</div>
+<section class="preview-section" aria-label="Interactive app preview">
+<div class="preview-tools"><div class="current"><strong id="currentName">01 / Folio</strong><span id="currentDescription">Visible paper grain, contrasting card stock and overlapping menus.</span></div><div class="controls"><div class="segmented" role="group" aria-label="Color mode"><button data-mode="light" aria-pressed="true">☀ Light</button><button data-mode="dark" aria-pressed="false">☾ Dark</button></div><div class="segmented device-controls" role="group" aria-label="Preview size"><button data-device="desktop" aria-pressed="true">Desktop</button><button data-device="phone" aria-pressed="false">Phone</button></div><a id="openPreview" href="songbook.html?design=folio&mode=light" target="_blank" rel="noopener">Open full size ↗</a></div></div>
+<div class="preview-stage" id="previewStage"><iframe id="appPreview" title="Interactive Folio design preview" src="songbook.html?design=folio&mode=light"></iframe></div>
+<div class="preview-caption"><p>Try searching, opening a song, transposing chords or adjusting text size. Click a chord to see its shape.</p><span>Sample library · nothing saved</span></div>
+</section>
+<p class="closing-note">The direction picker is only for this design study. The finished app would have a simple Light / Dark setting.</p>
+</main>
+</body></html>

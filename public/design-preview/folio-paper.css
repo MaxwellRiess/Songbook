@@ -1,0 +1,255 @@
+/* Folio refinement: texture belongs to the surfaces, never over the text.
+   One small, locally rendered SVG supplies grain and scattered paper fibres. */
+:root[data-design="folio"] {
+  --bg: #c5b293;
+  --panel: #faf5e9;
+  --panel-muted: #e6d9c2;
+  --ink: #30291f;
+  --muted: #443a2c;
+  --line: #b7a284;
+  --paper-menu: #eee2c9;
+  --paper-card: #f7efdd;
+  --paper-under: #d1bc98;
+  --paper-edge: #aa9270;
+  --paper-shadow: rgba(54, 37, 15, .24);
+  --paper-contact: rgba(54, 37, 15, .18);
+  --paper-blend: multiply;
+  --radius: 2px;
+}
+:root[data-design="folio"][data-mode="dark"] {
+  --bg: #181611;
+  --panel: #29261f;
+  --panel-muted: #403a2e;
+  --ink: #f4ecdd;
+  --muted: #c8bba5;
+  --line: #685b47;
+  --paper-menu: #443c2e;
+  --paper-card: #39342a;
+  --paper-under: #242019;
+  --paper-edge: #827055;
+  --paper-shadow: rgba(0, 0, 0, .5);
+  --paper-contact: rgba(0, 0, 0, .35);
+  --paper-blend: soft-light;
+}
+[data-design="folio"] body,
+[data-design="folio"] .library-panel,
+[data-design="folio"] .song-header,
+[data-design="folio"] .viewer,
+[data-design="folio"] .settings-disclosure,
+[data-design="folio"] .search-box,
+[data-design="folio"] .toolbar,
+[data-design="folio"] .song-row,
+[data-design="folio"] .autoscroll-controls,
+[data-design="folio"] dialog,
+[data-design="folio"] .chord-popover {
+  background-image: url("paper-grain.svg");
+  background-size: 256px 256px;
+  background-blend-mode: var(--paper-blend);
+}
+[data-design="folio"] .app-shell { grid-template-columns: 306px minmax(0, 1fr); }
+[data-design="folio"] .library-panel {
+  border-left: 6px solid var(--accent);
+  border-right: 1px solid var(--paper-edge);
+  padding: 25px 22px 22px;
+  gap: 18px;
+  background-color: var(--bg);
+  box-shadow: inset -4px 0 9px var(--paper-contact);
+}
+[data-design="folio"] .brand-row {
+  border-bottom: 1px solid var(--paper-edge);
+  padding: 0 0 18px;
+}
+[data-design="folio"] .settings-disclosure,
+[data-design="folio"] .search-box {
+  position: relative;
+  isolation: isolate;
+  flex-shrink: 0;
+  background-color: var(--paper-card);
+  border: 1px solid var(--paper-edge);
+  border-radius: 1px;
+  box-shadow: 1px 2px 1px var(--paper-contact), 3px 5px 8px var(--paper-shadow);
+}
+/* Misaligned backing sheets provide the overlap; the labels stay level. */
+[data-design="folio"] .settings-disclosure::before,
+[data-design="folio"] .search-box::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 2px -4px -5px 3px;
+  border: 1px solid var(--paper-edge);
+  background: url("paper-grain.svg") var(--paper-under);
+  background-blend-mode: var(--paper-blend);
+  transform: rotate(-1deg);
+  box-shadow: 1px 2px 3px var(--paper-contact);
+  pointer-events: none;
+}
+/* A second front surface covers the middle of the backing sheet. */
+[data-design="folio"] .settings-disclosure summary,
+[data-design="folio"] .settings-content {
+  background: url("paper-grain.svg") var(--paper-card);
+  background-blend-mode: var(--paper-blend);
+}
+[data-design="folio"] .settings-disclosure summary {
+  min-height: 43px;
+  padding: 0 14px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+[data-design="folio"] .tuner-disclosure::before { transform: rotate(1.1deg); inset: 3px 2px -5px -4px; }
+[data-design="folio"] .settings-content { padding: 14px; }
+[data-design="folio"] .search-box { padding: 13px 14px 14px; gap: 9px; }
+[data-design="folio"] .search-box::before { transform: rotate(.5deg); inset: 2px -3px -4px 3px; }
+[data-design="folio"] .search-box > span { color: var(--ink); }
+[data-design="folio"] .search-box input {
+  border: 0;
+  border-bottom: 1px solid var(--paper-edge);
+  background: transparent;
+  box-shadow: none;
+  padding: 8px 0;
+  min-height: 35px;
+  border-radius: 0;
+}
+[data-design="folio"] .library-controls { gap: 12px; margin-top: 3px; }
+[data-design="folio"] .library-tabs {
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid var(--paper-edge);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  align-items: end;
+  gap: 3px;
+}
+[data-design="folio"] .library-tabs button {
+  border: 1px solid var(--paper-edge);
+  border-bottom: 0;
+  border-radius: 2px 2px 0 0;
+  min-height: 33px;
+  background: url("paper-grain.svg") var(--paper-under);
+  background-blend-mode: var(--paper-blend);
+  color: var(--ink);
+  font-weight: 500;
+}
+[data-design="folio"] .library-tabs button[aria-pressed="true"] {
+  background-color: var(--paper-card);
+  color: var(--accent-strong);
+  min-height: 40px;
+  box-shadow: 2px -2px 5px var(--paper-contact);
+  border-top: 2px solid var(--accent);
+}
+[data-design="folio"] .library-view-controls { font-size: 11px; color: var(--ink); }
+[data-design="folio"] .song-list { padding: 3px 7px 14px 0; gap: 0; }
+[data-design="folio"] .song-row {
+  position: relative;
+  flex-shrink: 0;
+  min-height: 76px;
+  padding: 13px 15px;
+  margin-bottom: -1px;
+  background-color: var(--panel-muted);
+  border: 1px solid var(--paper-edge);
+  border-radius: 0;
+  box-shadow: 2px 2px 2px var(--paper-contact);
+}
+[data-design="folio"] .song-row:nth-child(even) { margin-left: 3px; width: calc(100% - 3px); }
+[data-design="folio"] .song-row.active {
+  z-index: 1;
+  margin: 0 0 4px;
+  width: 100%;
+  background-color: var(--paper-card);
+  border-color: var(--paper-edge);
+  border-left: 3px solid var(--accent);
+  box-shadow: 3px 4px 0 var(--paper-under), 4px 5px 0 var(--paper-edge), 5px 7px 9px var(--paper-shadow);
+}
+[data-design="folio"] .song-row:hover:not(:disabled) { background-color: var(--paper-card); }
+[data-design="folio"] .song-panel {
+  margin: 19px 24px 23px 20px;
+  height: calc(100dvh - 42px);
+  background: var(--panel);
+  border-color: var(--paper-edge);
+  box-shadow: 3px 4px 0 var(--paper-under), 4px 5px 0 var(--paper-edge), 7px 8px 0 var(--panel-muted), 8px 9px 0 var(--paper-edge), 10px 14px 22px var(--paper-shadow);
+}
+[data-design="folio"] .song-header {
+  border-bottom: 0;
+  padding: 30px 30px 28px;
+  background-color: var(--panel);
+}
+[data-design="folio"] .toolbar {
+  position: relative;
+  z-index: 1;
+  margin: 0 18px 5px 18px;
+  padding: 15px 20px;
+  border: 1px solid var(--paper-edge);
+  border-radius: 1px;
+  background-color: var(--paper-menu);
+  box-shadow: 3px 4px 0 var(--paper-under), 4px 5px 0 var(--paper-edge), 4px 8px 12px var(--paper-shadow);
+}
+[data-design="folio"] .viewer {
+  background-color: var(--panel);
+  padding: 30px 38px 125px;
+}
+/* Squarer, matte controls resemble small card cutouts instead of polished keys. */
+[data-design="folio"] button {
+  border-radius: 2px;
+  background-image: url("paper-grain.svg");
+  background-blend-mode: var(--paper-blend);
+  box-shadow: 1px 1px 0 var(--paper-edge), 2px 3px 3px var(--paper-contact);
+}
+[data-design="folio"] button:active:not(:disabled) { box-shadow: 0 1px 1px var(--paper-contact); }
+[data-design="folio"] .stepper-row { border-radius: 1px; border-color: var(--paper-edge); }
+[data-design="folio"] .stepper-button { border-radius: 0; box-shadow: none; }
+[data-design="folio"] .stepper-value { background: var(--panel-muted); box-shadow: none; }
+[data-design="folio"] .song-meta span { border: 0; border-radius: 0; background: var(--panel-muted); }
+[data-design="folio"] .autoscroll-controls {
+  padding: 14px;
+  right: 34px;
+  bottom: 30px;
+  border: 1px solid var(--paper-edge);
+  border-radius: 1px;
+  background-color: var(--paper-card);
+  backdrop-filter: none;
+  box-shadow: 3px 4px 0 var(--paper-under), 4px 5px 0 var(--paper-edge), 6px 9px 18px var(--paper-shadow);
+}
+[data-design="folio"] dialog,
+[data-design="folio"] .chord-popover {
+  border-color: var(--paper-edge);
+  border-radius: 2px;
+  box-shadow: 4px 5px 0 var(--paper-under), 5px 6px 0 var(--paper-edge), 8px 10px 0 var(--panel-muted), 9px 11px 0 var(--paper-edge), 12px 20px 40px var(--paper-shadow);
+}
+@media (min-width: 821px) and (max-width: 1100px) {
+  [data-design="folio"] .app-shell { grid-template-columns: 270px minmax(0, 1fr); }
+  [data-design="folio"] .song-header { padding: 25px; }
+}
+@media (max-width: 820px) {
+  [data-design="folio"] .app-shell { grid-template-columns: 1fr; }
+  [data-design="folio"] .song-panel { margin: 0; height: 100dvh; border: 0; box-shadow: none; }
+  [data-design="folio"] .song-header { padding: 22px 20px; }
+  [data-design="folio"] .app-shell .library-panel { padding: 24px 20px; }
+  [data-design="folio"] .toolbar { margin: 0 14px 5px; padding: 12px; }
+  [data-design="folio"] .viewer { padding: 27px 23px 125px; }
+  [data-design="folio"] .autoscroll-controls { right: 18px; bottom: 19px; padding: 12px; }
+  [data-design="folio"] .library-panel .brand-row::after { color: var(--ink); }
+}
+
+/* Front faces conceal the backing sheets while leaving their offset edges visible. */
+[data-design="folio"] .settings-disclosure::before,
+[data-design="folio"] .search-box::before { z-index: -2; }
+[data-design="folio"] .settings-disclosure::after,
+[data-design="folio"] .search-box::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: url("paper-grain.svg") var(--paper-card);
+  background-blend-mode: var(--paper-blend);
+  pointer-events: none;
+}
+[data-design="folio"] .song-header,
+[data-design="folio"] .viewer { background-image: url("paper-grain-soft.svg"); }
+[data-design="folio"] .library-panel { overflow-y: auto; }
+[data-design="folio"] .song-list { min-height: 120px; }
+@media (max-width: 820px) {
+  [data-design="folio"] .library-panel .brand-row { padding-left: 44px; }
+  [data-design="folio"] .library-panel .brand-row::after { display: none; }
+  [data-design="folio"] .library-panel h1 { font-size: 26px; }
+}

@@ -3,15 +3,14 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#e1e6dc">
-    <title>Lyrics & Chords</title>
-    <link rel="manifest" href="manifest.webmanifest">
-    <link rel="icon" href="icon-192.png" type="image/png">
-    <link rel="apple-touch-icon" href="apple-touch-icon.png">
-    <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="themes/pebble.css">
-    <script src="appearance.js"></script>
-  </head>
+    <meta name="theme-color" content="#171511">
+    <title>Songbook · Design preview</title>
+    <link rel="stylesheet" href="../styles.css">
+
+  <link rel="stylesheet" href="themes.css">
+<link rel="stylesheet" href="folio-paper.css">
+<script>const q=new URLSearchParams(location.search);document.documentElement.dataset.design=["folio","studio","pebble"].includes(q.get("design"))?q.get("design"):"folio";document.documentElement.dataset.mode=q.get("mode")==="dark"?"dark":"light";</script>
+</head>
   <body>
     <main id="appShell" class="app-shell">
       <aside class="library-panel" aria-label="Song library">
@@ -26,33 +25,8 @@
         </div>
 
         <details class="settings-disclosure">
-          <summary>Settings and syncing</summary>
-          <div class="settings-content">
-            <label class="menu-theme">
-              <span>Appearance</span>
-              <select id="modeSelect">
-                <option value="light">Light</option>
-                <option value="dark">Dark</option>
-              </select>
-            </label>
-
-            <div class="sync-panel">
-              <div>
-                <span>Sync</span>
-                <strong id="syncStatus">Local only</strong>
-                <p id="syncDetails" class="sync-details">Changes stay on this device.</p>
-              </div>
-              <div class="sync-actions">
-                <button id="syncNowButton" type="button" disabled>Sync</button>
-                <button id="syncSettingsButton" type="button">Settings</button>
-              </div>
-              <div class="backup-actions">
-                <button id="exportBackupButton" type="button">Export</button>
-                <button id="importBackupButton" type="button">Import</button>
-                <input id="backupFileInput" type="file" accept="application/json,.json" hidden>
-              </div>
-            </div>
-          </div>
+          <summary>Appearance</summary>
+          <div class="settings-content"><label class="menu-theme"><span>Mode</span><select id="modeSelect"><option value="light">Light</option><option value="dark">Dark</option></select></label><p class="preview-note">Interactive sample library. Changes last for this preview only.</p></div>
         </details>
 
         <details class="settings-disclosure tuner-disclosure">
@@ -219,48 +193,8 @@
       </div>
     </dialog>
 
-    <dialog id="syncDialog">
-      <form id="syncForm" method="dialog">
-        <div class="dialog-header">
-          <h2>Supabase sync</h2>
-          <button id="closeSyncDialogButton" class="icon-button" type="button" title="Close" aria-label="Close">
-            <span aria-hidden="true">x</span>
-          </button>
-        </div>
-
-        <div class="form-grid">
-          <label>
-            <span>Project URL</span>
-            <input id="supabaseUrlInput" type="url" placeholder="https://your-project.supabase.co">
-          </label>
-          <label>
-            <span>Publishable key</span>
-            <input id="supabaseApiKeyInput" type="password" autocomplete="off" placeholder="sb_publishable_... or a legacy anon key">
-          </label>
-          <label>
-            <span>Email</span>
-            <input id="syncEmailInput" type="email" autocomplete="email">
-          </label>
-          <label>
-            <span>Sign-in code</span>
-            <input id="syncCodeInput" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="6-digit code from email">
-          </label>
-        </div>
-
-        <p id="syncDialogStatus" class="dialog-status" role="status" aria-live="polite"></p>
-
-        <div class="dialog-actions">
-          <button id="signOutButton" type="button">Sign out</button>
-          <button id="sendMagicLinkButton" type="button">Send code</button>
-          <button id="verifyCodeButton" type="button">Verify code</button>
-          <button type="submit">Save settings</button>
-        </div>
-      </form>
-    </dialog>
-
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="app.js" type="module"></script>
+    <script src="sample.js" type="module"></script>
   </body>
 </html>
