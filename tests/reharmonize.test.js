@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { suggestReharmonizations, ReharmonizationDrafts } from '../public/reharmonize.js';
+import { suggestReharmonizations, transition, ReharmonizationDrafts } from '../public/reharmonize.js';
+import { inferKey } from '../public/song-key.js';
 import { parseChordSymbol } from '../public/chord-voicings.js';
 
 const names = (chord, context) => suggestReharmonizations(chord, context).map(item => item.symbol);
@@ -66,4 +67,91 @@ test('drafts are separate per song and survive navigation but reset when source 
   assert.equal(drafts.forSong({...song, rawContent: 'G\nNew words'}).size, 0);
   assert.equal(song.rawContent, 'C  G\nWords here');
   assert.equal(drafts.forSong(null).size, 0);
+});
+
+test('reads a cross relation as a rub, and an ordinary semitone as ordinary', () => {
+  // C to A major puts C sharp against the C you have just left. C to F puts F
+  // against that same chord's E, which is the plainest voice leading there is,
+  // so it must not be reported.
+  assert.deepEqual(transition('C', 'A').crossRelations, [{ was: 'C', becomes: 'C#' }]);
+  assert.deepEqual(transition('C', 'F').crossRelations, []);
+  assert.deepEqual(transition('C', 'G7').crossRelations, []);
+  assert.deepEqual(transition('C', 'F7').crossRelations, [{ was: 'E', becomes: 'Eb' }]);
+  assert.equal(transition('C', 'not a chord'), null);
+});
+
+test('counts the notes a transition carries over', () => {
+  assert.equal(transition('C', 'Am7').shared, 3);
+  assert.deepEqual(transition('C', 'Am7').sharedNotes.sort(), ['C', 'E', 'G']);
+  assert.equal(transition('C', 'F#').shared, 0);
+});
+
+test('warns on the neighbour a suggestion contradicts, and stays quiet otherwise', () => {
+  const options = suggestReharmonizations('Am', { prevChord: 'C', nextChord: 'F' });
+  const major = options.find(item => item.symbol === 'A');
+  assert.match(major.transitionNote, /C# contradicts the C in C/);
+  assert.equal(major.rubs, 2);
+  // Adding a seventh to the minor chord contradicts nothing either side.
+  assert.equal(options.find(item => item.symbol === 'Am7').rubs, 0);
+  assert.equal(options.find(item => item.symbol === 'Am7').transitionNote, '');
+});
+
+test('says nothing about transitions when there are no neighbours', () => {
+  for (const option of suggestReharmonizations('C')) {
+    assert.equal(option.into, null);
+    assert.equal(option.outOf, null);
+    assert.equal(option.rubs, 0);
+    assert.equal(option.transitionNote, '');
+  }
+});
+
+test('orders gentler colours first, and a rub last inside its band', () => {
+  const options = suggestReharmonizations('Am', { prevChord: 'C', nextChord: 'F' });
+  const strengths = options.map(item => item.strength);
+  assert.deepEqual(strengths, [...strengths].sort((a, b) => a - b), 'strength bands out of order');
+  for (let at = 1; at < options.length; at += 1) {
+    if (options[at].strength !== options[at - 1].strength) continue;
+    assert.ok(options[at].rubs >= options[at - 1].rubs, `${options[at].symbol} rubs less than the row above it`);
+  }
+});
+
+test('keeps the written order where nothing separates two suggestions', () => {
+  // Without neighbours every tie-breaker is zero, so only the strength bands
+  // move anything and the order inside each band is the one written down.
+  const names = suggestReharmonizations('Am').filter(item => item.strength === 1).map(item => item.symbol);
+  assert.deepEqual(names, ['Am7', 'Am9', 'Am11', 'Am6']);
+});
+
+test('offers a flat seventh only once the chord is known to be the tonic or the fourth', () => {
+  const cMajor = inferKey(['C', 'F', 'G', 'C', 'Am', 'Dm', 'G', 'C']);
+  assert.ok(cMajor.confident);
+  assert.ok(names('C', { key: cMajor }).includes('C7'), 'I7 in C major');
+  assert.ok(names('F', { key: cMajor }).includes('F7'), 'IV7 in C major');
+  // The fifth degree is already a dominant in the key, so nothing is added.
+  assert.ok(!names('G', { key: cMajor }).includes('G7#5'));
+  // Without a key, and with an unconfident one, neither appears.
+  assert.ok(!names('C').includes('C7'));
+  assert.ok(!names('C', { key: inferKey(['Am', 'F', 'C', 'G']) }).includes('C7'));
+});
+
+test('labels each suggestion with its degree and whether it is in the key', () => {
+  const cMajor = inferKey(['C', 'F', 'G', 'C', 'Am', 'Dm', 'G', 'C']);
+  const options = suggestReharmonizations('F', { key: cMajor });
+  assert.equal(options.find(item => item.symbol === 'Fmaj7').numeral, 'IVmaj7');
+  assert.equal(options.find(item => item.symbol === 'Fmaj7').diatonic, true);
+  assert.equal(options.find(item => item.symbol === 'F7').numeral, 'IV7');
+  assert.equal(options.find(item => item.symbol === 'F7').diatonic, false);
+  // No key means no claim either way.
+  const blind = suggestReharmonizations('F');
+  assert.equal(blind[0].numeral, '');
+  assert.equal(blind[0].diatonic, null);
+});
+
+test('a rub the original already has is not blamed on the suggestion', () => {
+  // Bb is outside C major and rubs against the B in G7 whatever you do to it,
+  // so extending it must not be reported as introducing the rub.
+  const options = suggestReharmonizations('Bb', { prevChord: 'G7' });
+  const extended = options.find(item => item.symbol === 'Bbmaj7');
+  assert.ok(extended);
+  assert.ok(!/contradicts/.test(extended.transitionNote), extended.transitionNote);
 });

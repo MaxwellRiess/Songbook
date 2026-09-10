@@ -64,9 +64,39 @@ of a Supabase sync or a JSON backup.
 Click or tap a chord, then turn on **Re-harmonize**. Alternatives range from
 gentler additions (sevenths, ninths, sixths) to bolder parallel major/minor swaps,
 raised elevenths, altered dominants and tritone substitutions. Each choice explains
-its effect and shows shared, added and removed chord tones. The next chord supplies
-local context for dominant approaches. Suggestions are harmonic possibilities;
-the app does not analyze the melody or guarantee a substitution will fit it.
+its effect and shows shared, added and removed chord tones. Suggestions are
+harmonic possibilities; the app does not analyze the melody or guarantee a
+substitution will fit it, however much harmonic context it has.
+
+### What the suggestions know
+
+The panel reads the chord either side of the one you clicked, and the key of the
+song as a whole.
+
+Neighbours come from inside the same section, so the chord after a verse's last
+is not the chorus's first. The header shows the run you are sitting in, and the
+chord's function when there is one, as in `Dm7 → G7 → C · V7 in C major`.
+
+The key is inferred from the song's chords and how often each is used, weighted
+toward the tonic and its dominant. Relative major and minor share every diatonic
+chord, so a song that leans on neither tonic is left unnamed rather than guessed
+at: no function is shown and no function-dependent suggestion is offered. This is
+chord-vocabulary analysis and nothing to do with the tune.
+
+With a key in hand, each suggestion is labelled with its degree and whether it
+sits inside the key, and two suggestions become available that make no sense
+without it: a flat seventh on the tonic and on the fourth, the blues and gospel
+colours that fall outside the major scale.
+
+A suggestion whose name is underlined with dots introduces a **cross relation**
+with a neighbour: the same letter in two chromatic forms a beat apart, C against
+C sharp, or E against E flat. An ordinary semitone between successive chords is
+not flagged, since a fourth chord resolving to the tonic moves F to E and that is
+the plainest voice leading there is.
+
+Suggestions are ordered gentler first, matching the tint ramp, with anything that
+introduces a cross relation last inside its band. Where nothing separates two
+suggestions the written order stands, so the list stays recognisable.
 
 On a mouse or trackpad the chord window can be dragged by its header, so it can sit
 beside the sheet instead of over it. Once moved it stays where you put it: clicking

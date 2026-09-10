@@ -182,30 +182,28 @@ function renderCard(voicing) {
 
 /* The chords a song actually uses, in the order they first appear, already
    transposed so they match what is on screen. */
-export function collectSongChords(song, transpose = 0) {
+/* Every chord in the song in the order it is played, repeats included. Line by
+   line, so a sheet that mixes inline markup with plain chord lines still comes
+   back in playing order, which is what the key inference weighs. */
+export function songChordSequence(song, transpose = 0) {
   if (!song) return [];
 
-  const seen = new Set();
   const chords = [];
-
   const add = (token) => {
     const chord = transposeChord(token, transpose)
       .replace(/^[([{]+/, "")
       .replace(/[)\]}]+$/, "")
       .replace(/[.,;:]+$/, "");
-    if (!chord || seen.has(chord)) return;
-    if (!parseChordSymbol(chord)) return;
-    seen.add(chord);
+    if (!chord || !parseChordSymbol(chord)) return;
     chords.push(chord);
   };
 
-  const content = stripTabTags(song.rawContent || "");
-
-  for (const match of content.matchAll(/\[ch\]([\s\S]*?)\[\/ch\]/gi)) {
-    add(match[1].trim());
-  }
-
-  for (const line of content.split("\n")) {
+  for (const line of stripTabTags(song.rawContent || "").split("\n")) {
+    const tagged = [...line.matchAll(/\[ch\](.*?)\[\/ch\]/gi)];
+    if (tagged.length) {
+      for (const match of tagged) add(match[1].trim());
+      continue;
+    }
     const cleaned = removeUgTags(line);
     if (!isPlainChordLine(cleaned)) continue;
     for (const token of cleaned.trim().split(/\s+/)) {
@@ -214,4 +212,9 @@ export function collectSongChords(song, transpose = 0) {
   }
 
   return chords;
+}
+
+/* The song's distinct chords, in order of first use. */
+export function collectSongChords(song, transpose = 0) {
+  return [...new Set(songChordSequence(song, transpose))];
 }

@@ -1788,6 +1788,10 @@ textarea {
    a changed root on the full soft accent. */
 .chord-popover .reharm-option[data-strength="2"] { background: var(--accent-mild); border-color: var(--accent-firm); }
 .chord-popover .reharm-option[data-strength="3"] { background: var(--accent-firm); border-color: var(--accent); }
+/* A suggestion that introduces a cross relation with a neighbouring chord. The
+   marker is a dotted underline on the name, matching how a reharmonized chord
+   is marked in the sheet itself. */
+.reharm-option.has-rub strong { text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
 
 /* Share one set of columns across every row so the flavours and strength
    labels line up. Without subgrid each row sizes its own columns, which still
