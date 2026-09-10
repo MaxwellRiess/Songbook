@@ -1,7 +1,12 @@
 /* Chord shape popover.
 
    Hovering a chord on a pointer device previews its shape; clicking (or tapping
-   on a touch screen) pins it so the voicings can be stepped through. */
+   on a touch screen) pins it so the voicings can be stepped through.
+
+   On a pointer device the window can be dragged by its header to park it clear
+   of the lyrics. Once dragged it stays put for the session: selecting another
+   chord swaps the contents and keeps the reharmonize panel open, rather than
+   snapping the window back over the sheet. */
 
 import { getVoicings, parseChordSymbol } from "./chord-voicings.js";
 import { createChordDiagram, positionLabel } from "./chord-diagram.js";
@@ -25,6 +30,7 @@ let hideTimer = 0;
 let callbacks = {};
 let reharmonizing = false;
 let selectedAlternative = null;
+let moved = null; // viewport position the window was dragged to, kept for the session
 
 export function initChordPopover(root, options = {}) {
   if (!root) return;
@@ -89,7 +95,10 @@ export function initChordPopover(root, options = {}) {
   });
 
   root.addEventListener("scroll", reposition, { passive: true });
-  window.addEventListener("resize", () => close());
+  window.addEventListener("resize", () => {
+    if (moved && !sheet) reposition();
+    else close();
+  });
 }
 
 export function closeChordPopover() {
@@ -107,10 +116,12 @@ function ensureUi() {
 
   root.innerHTML = `
     <div class="chord-popover-head">
+      <span class="chord-popover-grip" aria-hidden="true"></span>
       <div class="chord-popover-titles">
         <strong class="chord-popover-name"></strong>
         <span class="chord-popover-quality"></span>
       </div>
+      <button type="button" class="chord-popover-snap" hidden aria-label="Move the window back to the chord" title="Move back to the chord">&#8617;</button>
       <button type="button" class="chord-popover-close" aria-label="Close chord shape">&times;</button>
     </div>
     <div class="chord-popover-body">
@@ -144,6 +155,8 @@ function ensureUi() {
 
   ui = {
     root,
+    head: root.querySelector(".chord-popover-head"),
+    snap: root.querySelector(".chord-popover-snap"),
     name: root.querySelector(".chord-popover-name"),
     quality: root.querySelector(".chord-popover-quality"),
     stage: root.querySelector(".chord-popover-stage"),
@@ -164,6 +177,12 @@ function ensureUi() {
     close();
     previous?.focus({ preventScroll: true });
   });
+  ui.snap.addEventListener("click", () => {
+    moved = null;
+    updateMovedState();
+    reposition();
+  });
+  initDrag(ui.head);
   ui.prev.addEventListener("click", () => step(-1));
   ui.next.addEventListener("click", () => step(1));
   root.querySelector(".reharm-toggle").addEventListener("click", () => {
@@ -195,9 +214,12 @@ function open(token, { pinned: shouldPin }) {
   const parsed = parseChordSymbol(next);
 
   ensureUi();
+  // Selecting another chord from an open, pinned window keeps the panel showing
+  // so the same comparison carries across chords.
+  const keepPanel = !ui.root.hidden && pinned && reharmonizing;
   anchor?.classList.remove("chord-token-active");
   anchor = token;
-  reharmonizing = false;
+  reharmonizing = keepPanel;
   selectedAlternative = null;
   symbol = parsed ? parsed.symbol : next;
   pinned = shouldPin;
@@ -211,6 +233,7 @@ function open(token, { pinned: shouldPin }) {
   ui.root.classList.toggle("is-pinned", pinned);
   ui.root.hidden = false;
   token.classList.add("chord-token-active");
+  updateMovedState();
 
   render();
   renderReharmonization();
@@ -275,7 +298,7 @@ function close() {
   pinned = false;
   if (ui) {
     ui.root.hidden = true;
-    ui.root.classList.remove("is-pinned");
+    ui.root.classList.remove("is-pinned", "is-dragging");
   }
 }
 
@@ -290,6 +313,12 @@ function reposition() {
   if (sheet) {
     ui.root.style.left = "";
     ui.root.style.top = "";
+    return;
+  }
+
+  // A dragged window keeps its place; opening the panel only pulls it back into view.
+  if (moved) {
+    place(moved.left, moved.top);
     return;
   }
 
@@ -308,6 +337,74 @@ function reposition() {
 
   ui.root.style.left = `${Math.round(left)}px`;
   ui.root.style.top = `${Math.round(top)}px`;
+}
+
+/* Clamping sits apart from the DOM so it can be tested. A window wider or
+   taller than the viewport pins to the top-left margin rather than going
+   off-screen, and the scrollable body handles the overflow. */
+export function clampWindowPosition({ left, top, width, height, viewportWidth, viewportHeight, margin = 8 }) {
+  const limit = (value, extent, viewport) =>
+    Math.round(Math.max(margin, Math.min(value, Math.max(margin, viewport - extent - margin))));
+  return {
+    left: limit(left, width, viewportWidth),
+    top: limit(top, height, viewportHeight)
+  };
+}
+
+function place(left, top) {
+  const box = ui.root.getBoundingClientRect();
+  const spot = clampWindowPosition({
+    left, top,
+    width: box.width, height: box.height,
+    viewportWidth: window.innerWidth, viewportHeight: window.innerHeight
+  });
+  moved = spot;
+  ui.root.style.left = `${spot.left}px`;
+  ui.root.style.top = `${spot.top}px`;
+  updateMovedState();
+}
+
+/* A parked window carries .is-dragged so the narrow-viewport layout rules stop
+   pinning it to the bottom of the screen. */
+function updateMovedState() {
+  if (!ui) return;
+  const parked = Boolean(moved) && !sheet;
+  ui.root.classList.toggle("is-dragged", parked);
+  ui.snap.hidden = !parked;
+}
+
+function initDrag(head) {
+  head.addEventListener("pointerdown", (event) => {
+    if (sheet) return; // the mobile sheet is already docked clear of the lyrics
+    if (event.target.closest("button")) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+
+    const box = ui.root.getBoundingClientRect();
+    const grabX = event.clientX - box.left;
+    const grabY = event.clientY - box.top;
+
+    // Grabbing the window pins it, so a hover preview cannot fade mid-drag.
+    pinned = true;
+    clearTimeout(showTimer);
+    clearTimeout(hideTimer);
+    ui.root.classList.add("is-pinned", "is-dragging");
+    head.setPointerCapture(event.pointerId);
+    event.preventDefault();
+
+    const onMove = (move) => place(move.clientX - grabX, move.clientY - grabY);
+    const onEnd = () => {
+      head.removeEventListener("pointermove", onMove);
+      head.removeEventListener("pointerup", onEnd);
+      head.removeEventListener("pointercancel", onEnd);
+      head.releasePointerCapture?.(event.pointerId);
+      ui.root.classList.remove("is-dragging");
+      updateMovedState();
+    };
+
+    head.addEventListener("pointermove", onMove);
+    head.addEventListener("pointerup", onEnd);
+    head.addEventListener("pointercancel", onEnd);
+  });
 }
 
 function renderReharmonization() {

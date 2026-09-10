@@ -1303,6 +1303,62 @@ textarea {
   gap: 8px;
 }
 
+/* The header doubles as the drag handle, so the window can be parked clear of
+   the lyrics. The mobile sheet is already docked and stays fixed. */
+.chord-popover:not(.is-sheet) .chord-popover-head {
+  cursor: grab;
+  touch-action: none;
+}
+
+.chord-popover.is-dragging .chord-popover-head {
+  cursor: grabbing;
+}
+
+.chord-popover.is-dragging {
+  user-select: none;
+}
+
+.chord-popover-grip {
+  flex: none;
+  width: 9px;
+  height: 17px;
+  margin-top: 3px;
+  border-radius: 2px;
+  background-image: radial-gradient(currentColor 1px, transparent 1.1px);
+  background-size: 4px 4px;
+  background-position: 1px 2px;
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.chord-popover.is-sheet .chord-popover-grip {
+  display: none;
+}
+
+.chord-popover-snap {
+  flex: none;
+  min-height: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  background: none;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.chord-popover-snap[hidden] {
+  display: none;
+}
+
+.chord-popover-snap:hover,
+.chord-popover-snap:focus-visible {
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
 .chord-popover-titles {
   flex: 1;
   min-width: 0;
@@ -1646,6 +1702,7 @@ textarea {
 .chord-popover { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
 .chord-popover.is-reharmonizing .chord-diagram { max-width: 102px; }
 .chord-popover.is-pinned .chord-popover-close { display: block; min-width: 30px; min-height: 30px; }
+.chord-popover-head button { cursor: pointer; touch-action: auto; }
 .chord-popover .reharm-toggle { width: 100%; min-height: 38px; margin-top: 12px; }
 .chord-popover .reharm-toggle[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent); }
 .reharm-panel { margin-top: 12px; }
@@ -1670,5 +1727,5 @@ textarea {
 .reharm-draft span { color: var(--muted); font-size: 12px; margin-right: auto; }
 .reharm-draft button { font-size: 12px; min-height: 36px; }
 @media (max-width: 600px), (hover: none) {
-  .chord-popover.is-reharmonizing { left: 10px !important; right: 10px; bottom: 12px; top: auto !important; width: auto; max-height: calc(100dvh - 24px); }
+  .chord-popover.is-reharmonizing:not(.is-dragged) { left: 10px !important; right: 10px; bottom: 12px; top: auto !important; width: auto; max-height: calc(100dvh - 24px); }
 }

@@ -32,6 +32,8 @@ start with the system appearance.
   voicings from the open shape up the neck
 - Toggle **Re-harmonize** inside a chord popup to explore major/minor swaps,
   extended chords, and substitutions; hear a preview and replace that occurrence
+- Drag the chord window by its header to park it clear of the lyrics, then click
+  straight through the other chords without it jumping back
 - Look up any chord from the **Chords** button in the header, with every voicing
   shown at once, and optional inversions and shapes with muted inner strings
 - Tune by ear from the **Tuner** panel in the sidebar, which plays the six
@@ -47,6 +49,14 @@ raised elevenths, altered dominants and tritone substitutions. Each choice expla
 its effect and shows shared, added and removed chord tones. The next chord supplies
 local context for dominant approaches. Suggestions are harmonic possibilities;
 the app does not analyze the melody or guarantee a substitution will fit it.
+
+On a mouse or trackpad the chord window can be dragged by its header, so it can sit
+beside the sheet instead of over it. Once moved it stays where you put it: clicking
+another chord swaps the shapes and suggestions but leaves the window in place, and
+keeps the **Re-harmonize** panel open so you can work along a progression. The arrow
+button in the header sends it back to sitting under the selected chord. The position
+lasts for the session and is not saved. On a phone or tablet the window stays a
+bottom sheet, already clear of the lyrics.
 
 Select a suggestion to inspect its guitar shapes and compare **Hear original** with
 **Hear [chord]**. Audio uses a synthesized standard-tuning voicing without capo.
