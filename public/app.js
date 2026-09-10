@@ -29,7 +29,7 @@ import { buildMetaPills, normalizeSong, toPlainChordSheet } from "./song-model.j
 import { detectSongConflicts, mergePlaylists, mergeSongs } from "./song-sync.js";
 import { renderSheet as buildSheetFragment, renderedSheetText } from "./song-renderer.js";
 import { initFollowMode } from "./follow-mode.js";
-import { closeChordPopover, initChordPopover } from "./chord-popover.js";
+import { chordPanelState, closeChordPopover, initChordPopover, restoreChordPanel } from "./chord-popover.js";
 import { DEFAULT_ACCENT, DEFAULT_MAIN, deriveTint, isDefaultTint } from "./palette.js";
 import { inferKey } from "./song-key.js";
 import { collectSongChords, initChordExplorer, songChordSequence } from "./chord-explorer.js";
@@ -197,8 +197,12 @@ initChordPopover(elements.viewer, {
     else draft.set(id, transposeChord(alternative, -state.transpose));
     stopAutoscroll();
     const scroll = elements.viewer.scrollTop;
+    // The panel is put back on the same chord, so trying a few colours in a row
+    // does not mean reopening it each time.
+    const panel = chordPanelState();
     renderSheet(song);
     elements.viewer.scrollTop = scroll;
+    restoreChordPanel(panel);
     const replacement = [...elements.viewer.querySelectorAll(`[data-chord-id="${id}"]`)].find(item => item.getClientRects().length);
     replacement?.focus({ preventScroll: true });
     toast(alternative === null ? "Original chord restored" : `Trying ${alternative} in this position. Original song unchanged.`);
