@@ -77,11 +77,28 @@ Neighbours come from inside the same section, so the chord after a verse's last
 is not the chorus's first. The header shows the run you are sitting in, and the
 chord's function when there is one, as in `Dm7 → G7 → C · V7 in C major`.
 
-The key is inferred from the song's chords and how often each is used, weighted
-toward the tonic and its dominant. Relative major and minor share every diatonic
-chord, so a song that leans on neither tonic is left unnamed rather than guessed
-at: no function is shown and no function-dependent suggestion is offered. This is
-chord-vocabulary analysis and nothing to do with the tune.
+The key is inferred from the song's chords, how often each is used, and how they
+resolve into each other. Cadences carry the most weight and the closing cadence
+carries the most of all, because counting chord membership alone cannot separate
+a key from its relative: they share every diatonic chord. Relative major and
+minor that both get visited are settled by where the music actually lands.
+
+A song that leans on nothing is left unnamed rather than guessed at: no function
+is shown and no function-dependent suggestion is offered. This is chord-progression
+analysis and nothing to do with the tune.
+
+`tests/fixtures/keys.js` holds the songs the scoring weights answer to, each with
+the key a musician would give it, or marked as one the inference must refuse. The
+weights were tuned against the whole set rather than against any one song, and
+the confidence floor sits in the gap between the two bands, which
+`tests/song-key.test.js` checks has not closed.
+
+Where the chord either side makes a shape worth naming, the header says so:
+`Dm7 → G7 → Cmaj7 · V7 in C major · ii–V–I`. It recognises a two-five-one, a
+dominant sidestepping to the sixth degree instead of resolving, a chord repeated,
+and a dominant of whatever follows. Inside a two-five-one the tritone substitute
+explains itself as the bass walk it makes, `D → Db → C`, rather than in general
+terms.
 
 With a key in hand, each suggestion is labelled with its degree and whether it
 sits inside the key, and two suggestions become available that make no sense
@@ -123,6 +140,19 @@ reload or when the underlying sheet changes. **Copy** includes the draft; **Save
 version** opens a prefilled new-song form so you can name and keep the arrangement
 without overwriting the original. Copies and saved versions retain the original
 key and capo, independent of the viewer's transpose setting.
+
+### Leads into this chord
+
+A closed section at the foot of the panel shows ways into the chord rather than
+ways to replace it: its dominant, the two-five that steps through that dominant,
+a chord a semitone above sliding down, and a diminished a semitone below leaning
+up. Selecting one plays it resolving into the chord, and says when the song
+already does that.
+
+Nothing here is added to the sheet, which is a deliberate limit. Chords are
+positioned by the character column they sit above and the app stores no note
+lengths, so it cannot know whether a passing chord takes half a bar or one beat
+of it. It shows the idea and leaves the placement to your ear.
 
 The substitution vocabulary draws on [Open Music Theory's discussion of jazz
 substitutions](https://viva.pressbooks.pub/openmusictheory/chapter/substitutions/).

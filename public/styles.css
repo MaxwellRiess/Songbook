@@ -1810,6 +1810,22 @@ textarea {
 .chord-popover .reharm-apply { width: 100%; margin: 12px 0 6px; background: var(--accent-soft); color: var(--accent-strong); }
 .chord-popover .reharm-reset { width: 100%; margin: 0 0 8px; }
 .reharm-status { color: var(--accent-strong); font-size: 12px; margin-top: 6px; }
+
+/* Approaches sit behind a disclosure, closed by default, so they cost one row
+   of a panel that is already tall. */
+.approach-panel { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; }
+.approach-panel summary { font-size: 12px; font-weight: 650; cursor: pointer; min-height: 24px; }
+.approach-note { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.4; }
+.approach-options { display: grid; gap: 4px; margin: 8px 0 0; }
+@supports (grid-template-columns: subgrid) {
+  .approach-options { grid-template-columns: auto 1fr; }
+  .chord-popover .approach-option { grid-column: 1 / -1; grid-template-columns: subgrid; }
+}
+.chord-popover .approach-option { display: grid; grid-template-columns: minmax(50px, auto) 1fr; align-items: baseline; text-align: left; gap: 4px 10px; padding: 7px 10px; border-radius: 9px; min-height: 0; }
+.approach-option strong { color: var(--accent-strong); font-size: 14px; }
+.approach-option span { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.approach-detail { margin: 8px 0 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.approach-detail:empty { margin: 0; }
 .toolbar.has-reharmonization { flex-wrap: wrap; max-height: none; }
 .reharm-draft { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; padding-top: 8px; border-top: 1px solid var(--line); }
 .reharm-draft span { color: var(--muted); font-size: 12px; margin-right: auto; }

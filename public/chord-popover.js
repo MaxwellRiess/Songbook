@@ -10,9 +10,10 @@
 
 import { getVoicings, parseChordSymbol } from "./chord-voicings.js";
 import { createChordDiagram, positionLabel } from "./chord-diagram.js";
-import { suggestReharmonizations } from "./reharmonize.js";
+import { describeProgression, suggestReharmonizations } from "./reharmonize.js";
 import { romanNumeral } from "./song-key.js";
-import { playChordVoicing, stopChordAudio } from "./chord-audio.js";
+import { playChordSequence, playChordVoicing, stopChordAudio } from "./chord-audio.js";
+import { suggestApproaches } from "./approach.js";
 
 const STRENGTH_WORDS = {
   1: "gentler colour, adds notes only",
@@ -151,6 +152,12 @@ function ensureUi() {
       <p class="reharm-audio-note">Synthesized standard-tuning voicing, without capo.</p>
       <button type="button" class="reharm-apply" disabled>Use this chord</button>
       <button type="button" class="reharm-reset" hidden>Restore original chord</button>
+      <details class="approach-panel">
+        <summary>Leads into this chord</summary>
+        <p class="approach-note">Ideas for what could come before. Nothing is added to the sheet.</p>
+        <div class="approach-options" role="group" aria-label="Approach chords"></div>
+        <p class="approach-detail" aria-live="polite"></p>
+      </details>
       <p class="reharm-session">Changes are a draft. Copy or save a new version to keep them.</p>
       <p class="reharm-status" role="status"></p>
     </section>
@@ -430,8 +437,12 @@ function renderReharmonization() {
      when the key is known well enough to say. */
   const run = [context.prevChord, original, context.nextChord].filter(Boolean).join(" → ");
   const numeral = context.key?.confident ? romanNumeral(original, context.key) : "";
-  ui.root.querySelector(".reharm-context").textContent =
-    numeral ? `${run} · ${numeral} in ${context.key.name}` : run;
+  const shape = describeProgression({ ...context, symbol: original });
+  ui.root.querySelector(".reharm-context").textContent = [
+    run,
+    numeral && `${numeral} in ${context.key.name}`,
+    shape?.label
+  ].filter(Boolean).join(" · ");
   const list = ui.root.querySelector(".reharm-options");
   list.replaceChildren();
   for (const candidate of options) {
@@ -476,7 +487,50 @@ function renderReharmonization() {
   ui.root.querySelector(".reharm-hear-original").disabled = !lookup(original).length;
   ui.root.querySelector(".reharm-session").textContent = callbacks.onReplace ? "Drafts last until reload. Copy or save a new version to keep them." : "Explore colors here; use the main app to replace chords.";
   ui.root.querySelector(".reharm-status").textContent = "";
+  renderApproaches(context);
   showAlternative(anchor.dataset.chord);
+}
+
+/* Ways into the chord, for reading and hearing rather than for applying. The
+   list refreshes as chords are selected, and the section keeps whatever open
+   state it was left in. */
+function renderApproaches(context) {
+  const target = anchor.dataset.chord;
+  const list = ui.root.querySelector(".approach-options");
+  list.replaceChildren();
+
+  for (const option of suggestApproaches(target, { prevChord: context.prevChord || "" })) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "approach-option";
+    const name = document.createElement("strong");
+    name.textContent = option.chords.join("  ");
+    const label = document.createElement("span");
+    label.textContent = option.alreadyThere ? `${option.label} · already here` : option.label;
+    button.append(name, label);
+    button.title = option.explanation;
+    button.setAttribute("aria-label", `Hear ${option.chords.join(" then ")} into ${target}. ${option.explanation}`);
+    button.addEventListener("click", () => hearApproach(option, target));
+    list.append(button);
+  }
+  ui.root.querySelector(".approach-detail").textContent = "";
+}
+
+async function hearApproach(option, target) {
+  const detail = ui.root.querySelector(".approach-detail");
+  detail.textContent = option.explanation;
+  // The target is played last, so the approach is heard arriving rather than
+  // hanging unresolved.
+  const voicings = [...option.chords, target].map(name => lookup(name)[0]).filter(Boolean);
+  if (!voicings.length) {
+    detail.textContent = "No playable shape found for this approach.";
+    return;
+  }
+  try {
+    await playChordSequence(voicings);
+  } catch (error) {
+    detail.textContent = error.message || "Audio preview unavailable.";
+  }
 }
 
 function showAlternative(name) {
