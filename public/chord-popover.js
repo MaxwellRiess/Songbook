@@ -136,7 +136,6 @@ function ensureUi() {
     <button type="button" class="reharm-toggle" aria-pressed="false" aria-expanded="false" aria-controls="reharmPanel">Re-harmonize</button>
     <section id="reharmPanel" class="reharm-panel" hidden>
       <p class="reharm-context"></p>
-      <p class="reharm-hint">Choose a color, hear it, then try it in this position. Check changes against the melody.</p>
       <div class="reharm-options" role="group" aria-label="Alternative chords"></div>
       <div class="reharm-detail" aria-live="polite"></div>
       <div class="reharm-audio">
@@ -447,7 +446,7 @@ function renderReharmonization() {
     });
     list.append(button);
   }
-  ui.root.querySelector(".reharm-detail").textContent = options.length ? "Select an alternative to inspect its notes and guitar shapes." : "No alternatives found for this chord symbol.";
+  ui.root.querySelector(".reharm-detail").textContent = options.length ? "" : "No alternatives found for this chord symbol.";
   ui.root.querySelector(".reharm-apply").disabled = true;
   ui.root.querySelector(".reharm-reset").hidden = !callbacks.onReplace || !anchor.classList.contains("is-reharmonized");
   ui.root.querySelector(".reharm-hear-original").textContent = `Hear original ${original}`;
