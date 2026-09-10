@@ -36,6 +36,22 @@
               </select>
             </label>
 
+            <div class="menu-colours">
+              <span class="menu-colours-title">Colours</span>
+              <div class="menu-colours-row">
+                <label class="menu-colour">
+                  <input id="mainColourInput" type="color" aria-describedby="colourHint">
+                  <span>Main</span>
+                </label>
+                <label class="menu-colour">
+                  <input id="accentColourInput" type="color" aria-describedby="colourHint">
+                  <span>Accent</span>
+                </label>
+              </div>
+              <p id="colourHint" class="menu-colours-hint">Main tints the surfaces, accent colours the controls and chords. Both apply to light and dark.</p>
+              <button id="resetColoursButton" type="button" disabled>Reset colours</button>
+            </div>
+
             <div class="sync-panel">
               <div>
                 <span>Sync</span>

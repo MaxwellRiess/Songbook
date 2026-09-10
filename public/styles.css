@@ -391,6 +391,73 @@ textarea:focus {
   flex-shrink: 0;
 }
 
+/* ---------- colour choice ---------- */
+
+.menu-colours {
+  display: grid;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-top: 12px;
+}
+
+.menu-colours-row {
+  display: flex;
+  gap: 8px;
+}
+
+.menu-colour {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.menu-colour span {
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* A colour input draws its own chrome, so it is stripped back to the swatch. */
+.menu-colour input[type="color"] {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.menu-colour input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.menu-colour input[type="color"]::-webkit-color-swatch,
+.menu-colour input[type="color"]::-moz-color-swatch {
+  border: 0;
+  border-radius: 7px;
+}
+
+.menu-colours-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.menu-colours button:disabled {
+  opacity: 0.45;
+}
+
 .tuner-hint,
 .tuner-status {
   margin: 0;
@@ -1712,19 +1779,26 @@ textarea {
 /* One row per alternative. Most of the list is legible at once, and the audio
    and apply controls below stay in reach instead of being scrolled past. */
 .reharm-options { display: grid; gap: 4px; max-height: min(248px, 32dvh); overflow-y: auto; margin: 10px 0; padding: 2px; overscroll-behavior: contain; }
-.chord-popover .reharm-option { display: grid; grid-template-columns: minmax(50px, auto) 1fr auto; align-items: baseline; text-align: left; gap: 4px 10px; padding: 7px 10px; border-radius: 9px; min-height: 0; }
+.chord-popover .reharm-option { display: grid; grid-template-columns: minmax(50px, auto) 1fr; align-items: baseline; text-align: left; gap: 4px 10px; padding: 7px 10px; border-radius: 9px; min-height: 0; }
 .reharm-option strong { color: var(--accent-strong); font-size: 15px; }
 .reharm-option span { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
-.reharm-option small { color: var(--muted); font-size: 10px; white-space: nowrap; }
+
+/* How far a suggestion reaches is carried by the tint rather than by a label:
+   additions sit on the plain panel, a changed quality on the mild accent, and
+   a changed root on the full soft accent. */
+.chord-popover .reharm-option[data-strength="2"] { background: var(--accent-mild); border-color: var(--accent-firm); }
+.chord-popover .reharm-option[data-strength="3"] { background: var(--accent-firm); border-color: var(--accent); }
 
 /* Share one set of columns across every row so the flavours and strength
    labels line up. Without subgrid each row sizes its own columns, which still
    reads correctly, just less tidily. */
 @supports (grid-template-columns: subgrid) {
-  .reharm-options { grid-template-columns: auto 1fr auto; }
+  .reharm-options { grid-template-columns: auto 1fr; }
   .chord-popover .reharm-option { grid-column: 1 / -1; grid-template-columns: subgrid; }
 }
-.chord-popover .reharm-option[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+/* An inset ring, so the choice stays obvious on top of any strength tint. */
+.chord-popover .reharm-option[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.chord-popover .reharm-option[aria-pressed="true"] strong { color: var(--accent-strong); }
 .reharm-detail:not(:empty) { min-height: 36px; }
 .reharm-audio { display: flex; gap: 8px; margin: 12px 0 6px; }
 .reharm-audio button { flex: 1; min-width: 0; padding: 6px 8px; font-size: 12px; min-height: 40px; }

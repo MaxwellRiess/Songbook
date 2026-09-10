@@ -30,6 +30,7 @@ import { detectSongConflicts, mergePlaylists, mergeSongs } from "./song-sync.js"
 import { renderSheet as buildSheetFragment, renderedSheetText } from "./song-renderer.js";
 import { initFollowMode } from "./follow-mode.js";
 import { closeChordPopover, initChordPopover } from "./chord-popover.js";
+import { DEFAULT_ACCENT, DEFAULT_MAIN, deriveTint, isDefaultTint } from "./palette.js";
 import { collectSongChords, initChordExplorer } from "./chord-explorer.js";
 import { initTuner } from "./tuner.js";
 import { ReharmonizationDrafts } from "./reharmonize.js";
@@ -102,6 +103,9 @@ const elements = {
   resetChordsButton: document.querySelector("#resetChordsButton"),
   saveReharmButton: document.querySelector("#saveReharmButton"),
   modeSelect: document.querySelector("#modeSelect"),
+  mainColourInput: document.querySelector("#mainColourInput"),
+  accentColourInput: document.querySelector("#accentColourInput"),
+  resetColoursButton: document.querySelector("#resetColoursButton"),
   sidebarScrim: document.querySelector("#sidebarScrim"),
   autoscrollControls: document.querySelector("#autoscrollControls"),
   autoscrollToggle: document.querySelector("#autoscrollToggle"),
@@ -161,6 +165,7 @@ if (clippedSong) {
 }
 restoreSidebarState();
 elements.modeSelect.value = document.documentElement.dataset.mode;
+showColourChoice();
 bindEvents();
 updateTransposeDisplay();
 updateFontSizeDisplay();
@@ -249,6 +254,15 @@ function bindEvents() {
 
   elements.modeSelect.addEventListener("change", () => {
     window.SongbookAppearance.apply(elements.modeSelect.value);
+  });
+
+  /* Colour inputs fire while the picker is still open, so the app re-tints as
+     the choice is dragged around. */
+  elements.mainColourInput.addEventListener("input", applyColourChoice);
+  elements.accentColourInput.addEventListener("input", applyColourChoice);
+  elements.resetColoursButton.addEventListener("click", () => {
+    window.SongbookAppearance.setTint(null);
+    showColourChoice();
   });
 
   elements.newSongButton.addEventListener("click", () => openSongDialog());
@@ -933,6 +947,22 @@ function closeHeaderPlaylistMenu() {
   if (!state.playlistMenuOpen) return;
   state.playlistMenuOpen = false;
   renderHeaderPlaylistPicker(getSelectedSong());
+}
+
+/* The choice lives on the device alongside the light/dark mode, so it is read
+   back from the appearance script rather than from the song library. */
+function showColourChoice() {
+  const choice = window.SongbookAppearance.choice();
+  elements.mainColourInput.value = choice?.main || DEFAULT_MAIN;
+  elements.accentColourInput.value = choice?.accent || DEFAULT_ACCENT;
+  elements.resetColoursButton.disabled = !choice;
+}
+
+function applyColourChoice() {
+  const choice = { main: elements.mainColourInput.value, accent: elements.accentColourInput.value };
+  // Choosing the defaults back is a reset, so nothing is stored for it.
+  window.SongbookAppearance.setTint(isDefaultTint(choice) ? null : deriveTint(choice));
+  elements.resetColoursButton.disabled = isDefaultTint(choice);
 }
 
 function renderSheet(song) {

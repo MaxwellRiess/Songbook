@@ -19,6 +19,23 @@ syncing → Appearance**. The choice is saved on this device. Existing Stage Mod
 users stay in dark mode; other legacy themes become light. New installations
 start with the system appearance.
 
+### Colours
+
+**Settings and syncing → Colours** takes a **Main** and an **Accent** colour.
+Main tints the surfaces, accent colours the controls, chord names and diagrams.
+One pair of choices covers both light and dark, and the app re-tints as the
+picker moves. **Reset colours** returns to Pebble.
+
+Only the hue of each choice is used. Every token keeps the lightness Pebble was
+designed with, so body text holds at least 7:1 against its surfaces and the
+accent at least 4.5:1 whatever colours are chosen; `tests/palette.test.js`
+holds those floors across the hue wheel in both modes. Saturation follows the
+choice up to a ceiling, so surfaces stay a tint rather than a wash, and colours
+outside the sRGB gamut lose chroma rather than hue.
+
+The choice lives on the device alongside the light/dark mode, so it is not part
+of a Supabase sync or a JSON backup.
+
 ## Features
 
 - Store songs locally in browser IndexedDB
@@ -32,6 +49,7 @@ start with the system appearance.
   voicings from the open shape up the neck
 - Toggle **Re-harmonize** inside a chord popup to explore major/minor swaps,
   extended chords, and substitutions; hear a preview and replace that occurrence
+- Choose a main and accent colour under **Settings and syncing → Colours**
 - Drag the chord window by its header to park it clear of the lyrics, then click
   straight through the other chords without it jumping back
 - Look up any chord from the **Chords** button in the header, with every voicing
@@ -63,6 +81,12 @@ Select a suggestion to inspect its guitar shapes and compare **Hear original** w
 **Use this chord** changes only that occurrence and marks it with a dotted underline.
 Transpose continues to work on the arrangement. Reopen the chord to **Restore
 original chord**, or use **Reset chords** to clear all replacements for the song.
+
+Each suggestion carries a deepening accent tint for how far the change reaches:
+untinted only adds notes, a mild tint changes the chord's quality or function
+over the same root, and a firm tint moves the root as well. The words are in each
+row's tooltip and accessible name, so the colour is a shortcut rather than the
+only carrier.
 
 Drafts stay available while switching songs in the current tab, but are cleared on
 reload or when the underlying sheet changes. **Copy** includes the draft; **Save new

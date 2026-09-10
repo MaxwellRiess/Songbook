@@ -9,6 +9,8 @@
   --line: #c9d2c1;
   --accent: #436348;
   --accent-strong: #38573d;
+  --accent-mild: #e0f3e2;
+  --accent-firm: #c7e8cb;
   --accent-soft: #dfe9d7;
   --danger: #a23530;
   --edge: rgba(255,255,255,.8);
@@ -26,6 +28,8 @@
   --line: #4b5c4d;
   --accent: #b5cea0;
   --accent-strong: #c3dcb2;
+  --accent-mild: #323e27;
+  --accent-firm: #3e522c;
   --accent-soft: #3d513c;
   --danger: #ffaaa0;
   --edge: rgba(255,255,255,.06);

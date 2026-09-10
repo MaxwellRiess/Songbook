@@ -41,6 +41,10 @@ export function suggestReharmonizations(symbol, { nextChord = '' } = {}) {
     seen.add(key);
     suggestions.push({
       symbol: name, flavor, explanation: explanation + bassNote, bold,
+      /* How far the change reaches: 1 only adds notes, 2 changes the chord's
+         quality or function over the same root, 3 moves the root as well. The
+         panel colours the options by this rather than labelling each one. */
+      strength: bold ? (parsed.rootPc === original.rootPc ? 2 : 3) : 1,
       commonNotes: [...tones].filter(n => target.has(n)).map(n => noteName(original, n)),
       addedNotes: [...target].filter(n => !tones.has(n)).map(n => noteName(parsed, n)),
       removedNotes: [...tones].filter(n => !target.has(n)).map(n => noteName(original, n))
