@@ -13,6 +13,11 @@ import { createChordDiagram, positionLabel } from "./chord-diagram.js";
 import { suggestReharmonizations } from "./reharmonize.js";
 import { playChordVoicing, stopChordAudio } from "./chord-audio.js";
 
+const STRENGTH_WORDS = {
+  1: "gentler colour, adds notes only",
+  2: "bolder change, same root",
+  3: "boldest change, new root"
+};
 const SHOW_DELAY = 110;
 const HIDE_DELAY = 240;
 const CACHE = new Map();
@@ -427,10 +432,15 @@ function renderReharmonization() {
     const button = document.createElement("button");
     button.type = "button"; button.className = "reharm-option";
     button.setAttribute("aria-pressed", "false");
+    /* Strength is shown as a deepening accent tint, so the row carries no
+       label for it. Colour alone cannot be the whole message, so the words go
+       in the accessible name and the tooltip instead. */
+    button.dataset.strength = String(candidate.strength);
+    button.title = `${candidate.flavor} · ${STRENGTH_WORDS[candidate.strength]}`;
+    button.setAttribute("aria-label", `${candidate.symbol}, ${candidate.flavor}, ${STRENGTH_WORDS[candidate.strength]}`);
     const name = document.createElement("strong"); name.textContent = candidate.symbol;
     const flavor = document.createElement("span"); flavor.textContent = candidate.flavor;
-    const strength = document.createElement("small"); strength.textContent = candidate.bold ? "Bolder change" : "Gentler color";
-    button.append(name, flavor, strength);
+    button.append(name, flavor);
     button.addEventListener("click", () => {
       stopChordAudio();
       selectedAlternative = candidate;
