@@ -50,6 +50,38 @@ export function transition(fromSymbol, toSymbol) {
   };
 }
 
+/* Names the shape the chord sits in, when it makes one. Returns a short label
+   for the panel's header and a flag or two the suggestions can lean on. */
+export function describeProgression({ prevChord = '', symbol = '', nextChord = '', key = null } = {}) {
+  const inKey = key?.confident ? key : null;
+  const here = parseChordSymbol(symbol);
+  if (!here) return null;
+  const before = parseChordSymbol(prevChord);
+  const after = parseChordSymbol(nextChord);
+  const isDominant = chord => {
+    const steps = new Set(chord.intervals.map(n => n % 12));
+    return steps.has(4) && steps.has(10);
+  };
+  const fifthAbove = (from, to) => to && from && (from.rootPc - to.rootPc + 12) % 12 === 7;
+
+  if (before && here.rootPc === before.rootPc && sameSet(pcs(here), pcs(before))) {
+    return { label: 'the same chord again', repeated: true };
+  }
+  if (inKey && before && after) {
+    const degrees = [prevChord, symbol, nextChord].map(chord => scaleDegree(chord, inKey));
+    if (degrees[0] === 2 && degrees[1] === 5 && degrees[2] === 1) {
+      return { label: 'ii–V–I', twoFiveOne: true, target: after.symbol };
+    }
+  }
+  if (inKey && after && isDominant(here) && scaleDegree(symbol, inKey) === 5 && scaleDegree(nextChord, inKey) === 6) {
+    return { label: 'V–vi, the resolution withheld', deceptive: true };
+  }
+  if (after && isDominant(here) && fifthAbove(here, after)) {
+    return { label: `dominant of ${after.symbol}`, secondaryDominant: true, target: after.symbol };
+  }
+  return null;
+}
+
 export function suggestReharmonizations(symbol, { prevChord = '', nextChord = '', key = null } = {}) {
   const original = parseChordSymbol(symbol);
   if (!original) return [];
@@ -107,7 +139,18 @@ export function suggestReharmonizations(symbol, { prevChord = '', nextChord = ''
     add(`${root}13#11`, 'Bright tension', 'A raised fourth and thirteenth give the dominant a floating edge.', true);
     add(`${root}m7`, 'Minor turn', 'Lowers the third, changing the dominant function as well as its color.', true);
     const targetName = next && (next.rootPc-original.rootPc+12)%12 === 5 ? next.symbol : spellNote(original.rootPc+5, true);
-    add(`${spellNote(original.rootPc+6,true)}7`, 'Tritone substitute', `Shares the third/seventh pitch classes with ${root}7. Strongest when resolving down a semitone to ${targetName}.`, true);
+    /* Inside a ii-V-I the substitute's point is the bass walking down by
+       semitones, which is why players reach for it there. Saying so needs the
+       chord before as well as the one after. */
+    const shape = describeProgression({ prevChord, symbol, nextChord, key });
+    const previous = parseChordSymbol(prevChord);
+    /* Inside a ii-V-I the bass walk says everything the generic line about
+       resolving down a semitone says, and says it about this song, so it
+       replaces that sentence rather than following it. */
+    const resolution = shape?.twoFiveOne && previous
+      ? `Inside this ii–V–I the bass walks ${previous.root} → ${spellNote(original.rootPc+6, true)} → ${next.root}.`
+      : `Strongest when resolving down a semitone to ${targetName}.`;
+    add(`${spellNote(original.rootPc+6,true)}7`, 'Tritone substitute', `Shares the third/seventh pitch classes with ${root}7. ${resolution}`, true);
   } else if (diminished) {
     add(`${root}m7b5`, 'Half diminished', 'A softer diminished color with a minor seventh.');
     add(`${root}dim7`, 'Symmetric tension', 'A fully diminished seventh adds tightly spaced tension.', true);
@@ -153,6 +196,7 @@ export function suggestReharmonizations(symbol, { prevChord = '', nextChord = ''
     add(`${leadRoot}7`, `Lead to ${next.symbol}`, `A dominant of the next chord, ${next.symbol}. Changes the progression to create a stronger arrival.`, true);
   }
 
+  const shape = describeProgression({ prevChord, symbol: original.symbol, nextChord, key });
   const wasInto = prevChord ? transition(prevChord, original.symbol) : null;
   const wasOutOf = nextChord ? transition(original.symbol, nextChord) : null;
   for (const candidate of suggestions) {
@@ -163,6 +207,7 @@ export function suggestReharmonizations(symbol, { prevChord = '', nextChord = ''
     candidate.numeral = inKey ? romanNumeral(candidate.symbol, inKey) : '';
     candidate.diatonic = inKey ? isDiatonic(candidate.symbol, inKey) : null;
     candidate.transitionNote = describeTransition(candidate, { prevChord, nextChord, wasInto, wasOutOf, original });
+    candidate.progression = shape;
   }
 
   /* Gentler colours first, so the panel's tint ramp reads in order, then the

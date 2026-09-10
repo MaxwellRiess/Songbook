@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { suggestReharmonizations, transition, ReharmonizationDrafts } from '../public/reharmonize.js';
+import { describeProgression, suggestReharmonizations, transition, ReharmonizationDrafts } from '../public/reharmonize.js';
 import { inferKey } from '../public/song-key.js';
 import { parseChordSymbol } from '../public/chord-voicings.js';
 
@@ -131,7 +131,7 @@ test('offers a flat seventh only once the chord is known to be the tonic or the 
   assert.ok(!names('G', { key: cMajor }).includes('G7#5'));
   // Without a key, and with an unconfident one, neither appears.
   assert.ok(!names('C').includes('C7'));
-  assert.ok(!names('C', { key: inferKey(['Am', 'F', 'C', 'G']) }).includes('C7'));
+  assert.ok(!names('C', { key: inferKey(['C', 'Am', 'C', 'Am']) }).includes('C7'));
 });
 
 test('labels each suggestion with its degree and whether it is in the key', () => {
@@ -154,4 +154,42 @@ test('a rub the original already has is not blamed on the suggestion', () => {
   const extended = options.find(item => item.symbol === 'Bbmaj7');
   assert.ok(extended);
   assert.ok(!/contradicts/.test(extended.transitionNote), extended.transitionNote);
+});
+
+test('names the shape a chord sits in', () => {
+  const cMajor = inferKey(['Dm7', 'G7', 'Cmaj7', 'Dm7', 'G7', 'Cmaj7']);
+  const shape = context => describeProgression(context)?.label || null;
+  assert.equal(shape({ prevChord: 'Dm7', symbol: 'G7', nextChord: 'Cmaj7', key: cMajor }), 'ii–V–I');
+  assert.equal(shape({ prevChord: 'Dm7', symbol: 'G7', nextChord: 'Am', key: cMajor }), 'V–vi, the resolution withheld');
+  assert.equal(shape({ prevChord: 'C', symbol: 'C', nextChord: 'F', key: cMajor }), 'the same chord again');
+  assert.equal(shape({ prevChord: 'C', symbol: 'A7', nextChord: 'Dm7', key: cMajor }), 'dominant of Dm7');
+  assert.equal(shape({ prevChord: 'C', symbol: 'F', nextChord: 'C', key: cMajor }), null);
+  assert.equal(shape({ symbol: 'not a chord' }), null);
+});
+
+test('the ii-V-I shape needs a key, the dominant relationship does not', () => {
+  // Degrees cannot be named without a key, but one chord being a fifth above
+  // the next is true regardless.
+  assert.equal(describeProgression({ prevChord: 'Dm7', symbol: 'G7', nextChord: 'Cmaj7' }).secondaryDominant, true);
+  const unconfident = inferKey(['C', 'Am', 'C', 'Am']);
+  assert.ok(!describeProgression({ prevChord: 'Dm7', symbol: 'G7', nextChord: 'Cmaj7', key: unconfident }).twoFiveOne);
+});
+
+test('the tritone substitute names its bass walk inside a ii-V-I', () => {
+  const cMajor = inferKey(['Dm7', 'G7', 'Cmaj7', 'Dm7', 'G7', 'Cmaj7']);
+  const inside = suggestReharmonizations('G7', { prevChord: 'Dm7', nextChord: 'Cmaj7', key: cMajor })
+    .find(item => item.flavor === 'Tritone substitute');
+  assert.match(inside.explanation, /bass walks D → Db → C/);
+  // Outside one, there is no walk to describe.
+  const alone = suggestReharmonizations('G7', { nextChord: 'Cmaj7', key: cMajor })
+    .find(item => item.flavor === 'Tritone substitute');
+  assert.ok(!/bass walks/.test(alone.explanation));
+});
+
+test('every suggestion carries the shape, so the panel can state it once', () => {
+  const cMajor = inferKey(['Dm7', 'G7', 'Cmaj7', 'Dm7', 'G7', 'Cmaj7']);
+  const options = suggestReharmonizations('G7', { prevChord: 'Dm7', nextChord: 'Cmaj7', key: cMajor });
+  assert.ok(options.length > 0);
+  for (const option of options) assert.equal(option.progression.label, 'ii–V–I');
+  for (const option of suggestReharmonizations('G7')) assert.equal(option.progression, null);
 });

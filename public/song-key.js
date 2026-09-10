@@ -1,11 +1,18 @@
 /* Works out what key a song is in from its chords, and names a chord's function
    within that key.
 
-   This is chord-vocabulary analysis, not melody analysis: it reads the set of
-   chords a song uses and how often, and nothing about the tune. Relative major
-   and minor share a diatonic set, so the tonic and dominant emphasis is what
-   separates them; where a song does not lean either way the margin stays small
+   This is chord-progression analysis, not melody analysis: it reads which
+   chords a song uses, how often, and how they resolve into each other, and
+   nothing about the tune.
+
+   Counting chord membership alone is not enough. Relative major and minor share
+   every diatonic chord, so a song that visits both scores almost evenly however
+   long you count for. What separates them is where the music actually lands, so
+   cadences carry the most weight here, and the song's closing cadence carries
+   the most of all. Where a song still leans neither way the margin stays small
    and the caller is expected to hold back rather than guess.
+
+   `tests/fixtures/keys.js` holds the songs these weights are answerable to.
 
    Kept free of the DOM so it can be tested on its own. */
 
@@ -42,11 +49,45 @@ const IN_SCALE_FIT = 1;
 const TONIC_BONUS = 2;
 const DOMINANT_BONUS = 1.5;
 const FIRST_CHORD_BONUS = 1.5;
-const LAST_CHORD_BONUS = 3;
+/* Starting or ending on a chord is weak evidence on its own: a sheet written
+   out once ends where the writer stopped, and a vamp ends nowhere in
+   particular. Landing on the tonic counts, but arriving there by a cadence is
+   what carries the weight, so these two stay level and small. */
+const LAST_CHORD_BONUS = 1.5;
 
-/* Below this margin over the runner-up the answer is not worth showing. Songs
-   that sit evenly between relative keys land here, which is the point. */
-export const CONFIDENCE_FLOOR = 0.06;
+/* Where the music lands. An authentic cadence is the strongest ordinary
+   evidence of a key, and the one a song closes with is stronger still. */
+const AUTHENTIC_CADENCE = 4;
+const PLAGAL_CADENCE = 2;
+/* A dominant that sidesteps to the sixth degree instead of resolving is
+   evidence for the key it declined to land in, not against it. Without this a
+   song that keeps deferring its tonic reads as being in its relative minor. */
+const DECEPTIVE_CADENCE = 2;
+const TWO_FIVE_ONE = 3;
+const FINAL_CADENCE = 6;
+/* Blues and its relatives put a dominant seventh on the tonic and on the
+   fourth. Both then fall outside the major scale, so counting scale membership
+   alone reads such a song as being in the key a fourth above, and a tonic the
+   scale rejects also loses its tonic bonus and every cadence into it. Where a
+   song shows the pair, those two degrees accept a dominant seventh as their own
+   chord for that key, which is what a blues player hears them as. */
+const BLUES_DEGREES = [0, 5];
+
+/* Confidence is the winning margin per chord, not a share of the total score.
+   Both separate the corpus, but a share of the total leaves only 0.08 between
+   the songs that must stay unnamed and the closest one that must be named,
+   because most of that total is baseline diatonic fit every plausible key
+   earns. Per chord the same boundary has 0.44 of room, so a new song has to be
+   badly misjudged rather than marginally so before it crosses.
+
+   Per chord is not scale-free: the one-off bonuses for the first chord, the
+   last chord and the closing cadence do not grow when a song repeats, so the
+   same progression played four times reads a little lower than once through.
+   That costs less than the narrow boundary does.
+
+   Below this floor the answer is not worth showing. On the corpus the songs
+   that must stay unnamed sit at zero and the closest nameable one at 0.44. */
+export const CONFIDENCE_FLOOR = 0.25;
 
 /* Reduces a chord to the third it presents, which is what decides whether it
    sits on a degree. Suspended and power chords state no third and are treated
@@ -73,28 +114,92 @@ function degreeFit(chord, tonicPc, degrees, scale) {
   return 0;
 }
 
-function scoreKey(parsed, tonicPc, mode) {
-  const degrees = mode === "major" ? MAJOR_DEGREES : MINOR_DEGREES;
-  const scale = mode === "major" ? MAJOR_SCALE : MINOR_SCALE;
-  const dominantAt = 7;
-  let score = 0;
+/* Where a chord sits relative to a tonic, with the third it presents. */
+const place = (chord, tonicPc) => ({
+  at: (chord.rootPc - tonicPc + 12) % 12,
+  third: thirdOf(chord)
+});
 
-  for (const chord of parsed) {
-    score += degreeFit(chord, tonicPc, degrees, scale);
-    const from = (chord.rootPc - tonicPc + 12) % 12;
-    const third = thirdOf(chord);
-    // Landing on the tonic and using its dominant are what tell a key apart
-    // from its relative, which shares every diatonic chord with it.
-    if (from === 0 && (third === "neutral" || degrees[0].thirds.includes(third))) score += TONIC_BONUS;
-    if (from === dominantAt && (third === "dominant" || third === "major")) score += DOMINANT_BONUS;
+const isTonic = (spot, degrees) =>
+  spot.at === 0 && (spot.third === "neutral" || degrees[0].thirds.includes(spot.third));
+
+const isDominant = (spot) => spot.at === 7 && (spot.third === "dominant" || spot.third === "major");
+
+/* Names the cadence one pair of chords makes toward a tonic, or nothing. The
+   kind matters as well as the size: only an authentic close earns the weight
+   for ending a song, because a sheet written out once ends wherever the writer
+   stopped, and a loop that happens to break on its fourth degree is not
+   cadencing there. */
+function cadenceBetween(before, after, degrees) {
+  if (isTonic(after, degrees)) {
+    if (isDominant(before)) return { weight: AUTHENTIC_CADENCE, authentic: true };
+    if (before.at === 5) return { weight: PLAGAL_CADENCE, authentic: false };
+    return null;
+  }
+  /* A dominant seventh stepping to the sixth degree is a resolution withheld.
+     A plain major triad doing the same thing is asking for nothing, and reading
+     it as a withheld cadence turns modal tunes into the wrong major key. */
+  if (before.at === 7 && before.third === "dominant" && after.at === 9 && after.third === "minor") {
+    return { weight: DECEPTIVE_CADENCE, authentic: false };
+  }
+  return null;
+}
+
+function scoreKey(parsed, tonicPc, mode) {
+  const scale = mode === "major" ? MAJOR_SCALE : MINOR_SCALE;
+  const spots = parsed.map((chord) => place(chord, tonicPc));
+
+  let degrees = mode === "major" ? MAJOR_DEGREES : MINOR_DEGREES;
+  const carriesDominant = (at) => spots.some((spot) => spot.at === at && spot.third === "dominant");
+  if (mode === "major" && BLUES_DEGREES.every(carriesDominant)) {
+    degrees = degrees.map((degree) =>
+      BLUES_DEGREES.includes(degree.at) ? { ...degree, thirds: [...degree.thirds, "dominant"] } : degree);
   }
 
-  const first = parsed[0];
-  const last = parsed[parsed.length - 1];
-  if (first && (first.rootPc - tonicPc + 12) % 12 === 0) score += FIRST_CHORD_BONUS;
-  if (last && (last.rootPc - tonicPc + 12) % 12 === 0) score += LAST_CHORD_BONUS;
+  let score = 0;
+
+  parsed.forEach((chord, at) => {
+    score += degreeFit(chord, tonicPc, degrees, scale);
+    if (isTonic(spots[at], degrees)) score += TONIC_BONUS;
+    if (isDominant(spots[at])) score += DOMINANT_BONUS;
+  });
+
+  for (let at = 1; at < spots.length; at += 1) {
+    const cadence = cadenceBetween(spots[at - 1], spots[at], degrees);
+    score += cadence?.weight || 0;
+    // The cadence a song closes on says more than any of the ones before it.
+    if (cadence?.authentic && at === spots.length - 1) score += FINAL_CADENCE;
+    // A second degree stepping through the dominant into the tonic.
+    if (at >= 2 && spots[at - 2].at === 2 && isDominant(spots[at - 1]) && isTonic(spots[at], degrees)) {
+      score += TWO_FIVE_ONE;
+    }
+  }
+
+  if (spots.length && spots[0].at === 0) score += FIRST_CHORD_BONUS;
+  if (spots.length && spots[spots.length - 1].at === 0) score += LAST_CHORD_BONUS;
 
   return score;
+}
+
+/* Every candidate key scored and ranked, best first. Exported so the corpus
+   tests and any diagnosis can see what came second and by how much. */
+export function rankKeys(symbols) {
+  const parsed = (symbols || []).map(parseChordSymbol).filter(Boolean);
+  if (parsed.length < 2) return [];
+  const useFlats = parsed.some((chord) => chord.useFlats);
+
+  const scored = [];
+  for (let tonicPc = 0; tonicPc < 12; tonicPc += 1) {
+    for (const mode of ["major", "minor"]) {
+      scored.push({
+        tonicPc,
+        mode,
+        name: `${spellNote(tonicPc, useFlats)} ${mode}`,
+        score: scoreKey(parsed, tonicPc, mode)
+      });
+    }
+  }
+  return scored.sort((one, other) => other.score - one.score);
 }
 
 /* Takes chord symbols in the order they are played, repeats included, and
@@ -104,26 +209,20 @@ export function inferKey(symbols) {
   const parsed = (symbols || []).map(parseChordSymbol).filter(Boolean);
   if (parsed.length < 2) return null;
 
-  const scored = [];
-  for (let tonicPc = 0; tonicPc < 12; tonicPc += 1) {
-    for (const mode of ["major", "minor"]) {
-      scored.push({ tonicPc, mode, score: scoreKey(parsed, tonicPc, mode) });
-    }
-  }
-  scored.sort((one, other) => other.score - one.score);
-
+  const scored = rankKeys(symbols);
   const [best, runnerUp] = scored;
   if (best.score <= 0) return null;
 
   const useFlats = parsed.some((chord) => chord.useFlats);
   const tonic = spellNote(best.tonicPc, useFlats);
+  const confidence = (best.score - runnerUp.score) / parsed.length;
   return {
     tonicPc: best.tonicPc,
     mode: best.mode,
     tonic,
     name: `${tonic} ${best.mode}`,
-    confidence: (best.score - runnerUp.score) / best.score,
-    confident: (best.score - runnerUp.score) / best.score >= CONFIDENCE_FLOOR
+    confidence,
+    confident: confidence >= CONFIDENCE_FLOOR
   };
 }
 
