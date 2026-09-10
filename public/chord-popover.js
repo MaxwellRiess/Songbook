@@ -1,12 +1,21 @@
-/* Chord shape popover.
+/* The harmony panel, and the hover preview that precedes it.
 
-   Hovering a chord on a pointer device previews its shape; clicking (or tapping
-   on a touch screen) pins it so the voicings can be stepped through.
+   Clicking a chord opens a panel that stays open until it is dismissed. On a
+   wide pointer device it docks as a column down the right of the window, so the
+   sheet reflows beside it and nothing overlaps: you can scroll the song and
+   click through its chords with the panel holding still. On a narrow screen or
+   a touch screen it is a bottom sheet instead, which is already clear of the
+   lyrics.
 
-   On a pointer device the window can be dragged by its header to park it clear
-   of the lyrics. Once dragged it stays put for the session: selecting another
-   chord swaps the contents and keeps the reharmonize panel open, rather than
-   snapping the window back over the sheet. */
+   Docking replaced an earlier floating window that could be dragged clear of
+   the sheet. A column that cannot overlap is what the dragging was reaching
+   for, and it also frees the panel from having to fit inside a viewport-height
+   box, so the reharmonize options and the approaches have room.
+
+   Hovering a chord still previews its shape, as a small transient window with
+   just the diagram in it. That is suppressed while the panel is open, where
+   moving the mouse would otherwise keep pulling the panel off the chord being
+   worked on. */
 
 import { getVoicings, parseChordSymbol } from "./chord-voicings.js";
 import { createChordDiagram, positionLabel } from "./chord-diagram.js";
@@ -30,31 +39,44 @@ let anchor = null;
 let symbol = null;
 let voicings = [];
 let index = 0;
-let pinned = false;
-let sheet = false;
+/* "floating" is the transient hover preview. "docked" and "sheet" are the two
+   presentations of the persistent panel, chosen by how much room there is. */
+let mode = "floating";
 let showTimer = 0;
 let hideTimer = 0;
 let callbacks = {};
 let reharmonizing = false;
 let selectedAlternative = null;
-let moved = null; // viewport position the window was dragged to, kept for the session
+let sheetRoot = null;
+
+const DOCK_WIDTH = 1000; // below this there is no room for a column beside the sheet
+
+function persistentMode() {
+  const pointer = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  return pointer && window.innerWidth >= DOCK_WIDTH ? "docked" : "sheet";
+}
+
+const isOpenPanel = () => mode !== "floating" && ui && !ui.root.hidden;
 
 export function initChordPopover(root, options = {}) {
   if (!root) return;
   callbacks = options;
+  sheetRoot = root;
 
   root.addEventListener("pointerover", (event) => {
     if (event.pointerType !== "mouse") return;
+    // A preview that follows the mouse would keep pulling an open panel off the
+    // chord being worked on.
+    if (isOpenPanel()) return;
     const token = event.target.closest?.(".chord-token");
     if (!token || token === anchor) return;
-    if (pinned) return;
     clearTimeout(hideTimer);
     clearTimeout(showTimer);
-    showTimer = setTimeout(() => open(token, { pinned: false }), SHOW_DELAY);
+    showTimer = setTimeout(() => open(token, { mode: "floating" }), SHOW_DELAY);
   });
 
   root.addEventListener("pointerout", (event) => {
-    if (event.pointerType !== "mouse") return;
+    if (event.pointerType !== "mouse" || isOpenPanel()) return;
     if (!event.target.closest?.(".chord-token")) return;
     clearTimeout(showTimer);
     scheduleHide();
@@ -66,14 +88,15 @@ export function initChordPopover(root, options = {}) {
     event.preventDefault();
     clearTimeout(showTimer);
     clearTimeout(hideTimer);
-    if (pinned && token === anchor) close();
-    else open(token, { pinned: true });
+    if (isOpenPanel() && token === anchor) close();
+    else open(token, { mode: persistentMode() });
   });
 
   root.addEventListener("keydown", event => {
     const token = event.target.closest?.(".chord-token");
     if (token && (event.key === "Enter" || event.key === " ")) {
-      event.preventDefault(); open(token, { pinned: true });
+      event.preventDefault();
+      open(token, { mode: persistentMode() });
       ui.root.querySelector(".reharm-toggle").focus();
     }
   });
@@ -82,7 +105,9 @@ export function initChordPopover(root, options = {}) {
     if (!ui || ui.root.hidden) return;
     if (ui.root.contains(event.target)) return;
     if (event.target.closest?.(".chord-token")) return;
-    close();
+    // The panel is dismissed deliberately, not by clicking past it. Only the
+    // transient preview goes away on its own.
+    if (mode === "floating") close();
   });
 
   document.addEventListener("keydown", (event) => {
@@ -103,13 +128,36 @@ export function initChordPopover(root, options = {}) {
 
   root.addEventListener("scroll", reposition, { passive: true });
   window.addEventListener("resize", () => {
-    if (moved && !sheet) reposition();
-    else close();
+    if (!ui || ui.root.hidden) return;
+    if (mode === "floating") {
+      close();
+      return;
+    }
+    // A window narrowing past the dock width turns the column into a sheet.
+    applyMode(persistentMode());
+    reposition();
   });
 }
 
 export function closeChordPopover() {
   close();
+}
+
+/* Re-rendering the sheet replaces every chord token, so a panel pointing at one
+   loses its anchor. Applying a chord is part of working through a song with the
+   panel open, so the caller captures what the panel is showing, re-renders, and
+   puts it back. Switching songs does not, which is why this is the caller's
+   decision rather than something done automatically. */
+export function chordPanelState() {
+  if (!ui || ui.root.hidden || mode === "floating" || !anchor) return null;
+  return { chordId: anchor.dataset.chordId, mode, reharmonizing };
+}
+
+export function restoreChordPanel(state) {
+  if (!state || !sheetRoot || state.chordId === undefined) return;
+  const token = sheetRoot.querySelector(`[data-chord-id="${state.chordId}"]`);
+  if (!token) return;
+  open(token, { mode: state.mode, keepPanel: state.reharmonizing });
 }
 
 function ensureUi() {
@@ -123,13 +171,11 @@ function ensureUi() {
 
   root.innerHTML = `
     <div class="chord-popover-head">
-      <span class="chord-popover-grip" aria-hidden="true"></span>
       <div class="chord-popover-titles">
         <strong class="chord-popover-name"></strong>
         <span class="chord-popover-quality"></span>
       </div>
-      <button type="button" class="chord-popover-snap" hidden aria-label="Move the window back to the chord" title="Move back to the chord">&#8617;</button>
-      <button type="button" class="chord-popover-close" aria-label="Close chord shape">&times;</button>
+      <button type="button" class="chord-popover-close" aria-label="Close the harmony panel">&times;</button>
     </div>
     <div class="chord-popover-body">
       <button type="button" class="chord-popover-nav" data-step="-1" aria-label="Previous voicing">&#8249;</button>
@@ -163,12 +209,12 @@ function ensureUi() {
     </section>
   `;
 
-  document.body.append(root);
+  // Inside the shell, so the docked column can be one of its grid tracks.
+  (document.querySelector("#appShell") || document.body).append(root);
 
   ui = {
     root,
     head: root.querySelector(".chord-popover-head"),
-    snap: root.querySelector(".chord-popover-snap"),
     name: root.querySelector(".chord-popover-name"),
     quality: root.querySelector(".chord-popover-quality"),
     stage: root.querySelector(".chord-popover-stage"),
@@ -182,26 +228,20 @@ function ensureUi() {
     if (event.pointerType === "mouse") clearTimeout(hideTimer);
   });
   root.addEventListener("pointerleave", (event) => {
-    if (event.pointerType === "mouse" && !pinned) scheduleHide();
+    if (event.pointerType === "mouse" && mode === "floating") scheduleHide();
   });
   root.querySelector(".chord-popover-close").addEventListener("click", () => {
     const previous = anchor;
     close();
     previous?.focus({ preventScroll: true });
   });
-  ui.snap.addEventListener("click", () => {
-    moved = null;
-    updateMovedState();
-    reposition();
-  });
-  initDrag(ui.head);
   ui.prev.addEventListener("click", () => step(-1));
   ui.next.addEventListener("click", () => step(1));
   root.querySelector(".reharm-toggle").addEventListener("click", () => {
     reharmonizing = !reharmonizing;
-    pinned = true; clearTimeout(hideTimer);
-    ui.root.classList.add("is-pinned");
-    renderReharmonization(); reposition();
+    clearTimeout(hideTimer);
+    renderReharmonization();
+    reposition();
   });
   root.querySelector(".reharm-hear").addEventListener("click", () => hear(symbol, voicings[index]));
   root.querySelector(".reharm-hear-original").addEventListener("click", () => {
@@ -220,35 +260,37 @@ function ensureUi() {
   return ui;
 }
 
-function open(token, { pinned: shouldPin }) {
+function open(token, { mode: wanted, keepPanel: forcePanel }) {
   stopChordAudio();
   const next = token.dataset.chord || token.textContent.trim();
   const parsed = parseChordSymbol(next);
 
   ensureUi();
-  // Selecting another chord from an open, pinned window keeps the panel showing
-  // so the same comparison carries across chords.
-  const keepPanel = !ui.root.hidden && pinned && reharmonizing;
+  /* Selecting another chord while the panel is open keeps the reharmonize
+     section showing, so the same comparison carries across chords. A hover
+     preview never carries it, since it does not show the section at all. */
+  const keepPanel = forcePanel === undefined
+    ? wanted !== "floating" && isOpenPanel() && reharmonizing
+    : forcePanel;
   anchor?.classList.remove("chord-token-active");
   anchor = token;
   reharmonizing = keepPanel;
   selectedAlternative = null;
   symbol = parsed ? parsed.symbol : next;
-  pinned = shouldPin;
-  sheet = !window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   voicings = parsed ? lookup(symbol) : [];
   index = Math.min(CHOSEN.get(symbol) || 0, Math.max(voicings.length - 1, 0));
 
   ui.name.textContent = symbol;
   ui.quality.textContent = parsed ? `${parsed.qualityName} · ${parsed.notes.join(" ")}` : "unrecognised chord";
-  ui.root.classList.toggle("is-sheet", sheet);
-  ui.root.classList.toggle("is-pinned", pinned);
+  applyMode(wanted);
   ui.root.hidden = false;
   token.classList.add("chord-token-active");
-  updateMovedState();
 
   render();
-  renderReharmonization();
+  // A hover preview shows the shape and nothing else, so none of the panel's
+  // work is done for it.
+  if (mode === "floating") ui.root.querySelector(".reharm-panel").hidden = true;
+  else renderReharmonization();
   reposition();
 }
 
@@ -288,17 +330,34 @@ function step(direction) {
   if (next < 0 || next >= voicings.length) return;
   index = next;
   CHOSEN.set(symbol, index);
-  pinned = true;
-  ui.root.classList.add("is-pinned");
+  // Stepping through voicings is deliberate enough to keep the window around,
+  // so a hover preview becomes the panel.
+  if (mode === "floating") applyMode(persistentMode());
   clearTimeout(hideTimer);
   render();
   reposition();
 }
 
 function scheduleHide() {
-  if (pinned) return;
+  if (mode !== "floating") return;
   clearTimeout(hideTimer);
   hideTimer = setTimeout(close, HIDE_DELAY);
+}
+
+/* The docked column is a track of the app shell's grid, so the shell has to
+   know when to make room for it. */
+function applyMode(wanted) {
+  mode = wanted;
+  if (!ui) return;
+  ui.root.classList.toggle("is-sheet", mode === "sheet");
+  ui.root.classList.toggle("is-docked", mode === "docked");
+  ui.root.classList.toggle("is-floating", mode === "floating");
+  ui.root.setAttribute("aria-label", mode === "floating" ? "Chord shape" : "Harmony panel");
+  document.querySelector("#appShell")?.classList.toggle("harmony-docked", mode === "docked");
+  if (mode !== "floating") {
+    ui.root.style.left = "";
+    ui.root.style.top = "";
+  }
 }
 
 function close() {
@@ -307,13 +366,16 @@ function close() {
   clearTimeout(hideTimer);
   anchor?.classList.remove("chord-token-active");
   anchor = null;
-  pinned = false;
   if (ui) {
     ui.root.hidden = true;
-    ui.root.classList.remove("is-pinned", "is-dragging");
+    ui.root.classList.remove("is-docked", "is-sheet");
   }
+  document.querySelector("#appShell")?.classList.remove("harmony-docked");
+  mode = "floating";
 }
 
+/* Only the transient preview needs placing. The docked column and the bottom
+   sheet are laid out by the stylesheet. */
 function reposition() {
   if (!ui || ui.root.hidden || !anchor) return;
 
@@ -322,17 +384,7 @@ function reposition() {
     return;
   }
 
-  if (sheet) {
-    ui.root.style.left = "";
-    ui.root.style.top = "";
-    return;
-  }
-
-  // A dragged window keeps its place; opening the panel only pulls it back into view.
-  if (moved) {
-    place(moved.left, moved.top);
-    return;
-  }
+  if (mode !== "floating") return;
 
   const target = anchor.getBoundingClientRect();
   const box = ui.root.getBoundingClientRect();
@@ -349,74 +401,6 @@ function reposition() {
 
   ui.root.style.left = `${Math.round(left)}px`;
   ui.root.style.top = `${Math.round(top)}px`;
-}
-
-/* Clamping sits apart from the DOM so it can be tested. A window wider or
-   taller than the viewport pins to the top-left margin rather than going
-   off-screen, and the scrollable body handles the overflow. */
-export function clampWindowPosition({ left, top, width, height, viewportWidth, viewportHeight, margin = 8 }) {
-  const limit = (value, extent, viewport) =>
-    Math.round(Math.max(margin, Math.min(value, Math.max(margin, viewport - extent - margin))));
-  return {
-    left: limit(left, width, viewportWidth),
-    top: limit(top, height, viewportHeight)
-  };
-}
-
-function place(left, top) {
-  const box = ui.root.getBoundingClientRect();
-  const spot = clampWindowPosition({
-    left, top,
-    width: box.width, height: box.height,
-    viewportWidth: window.innerWidth, viewportHeight: window.innerHeight
-  });
-  moved = spot;
-  ui.root.style.left = `${spot.left}px`;
-  ui.root.style.top = `${spot.top}px`;
-  updateMovedState();
-}
-
-/* A parked window carries .is-dragged so the narrow-viewport layout rules stop
-   pinning it to the bottom of the screen. */
-function updateMovedState() {
-  if (!ui) return;
-  const parked = Boolean(moved) && !sheet;
-  ui.root.classList.toggle("is-dragged", parked);
-  ui.snap.hidden = !parked;
-}
-
-function initDrag(head) {
-  head.addEventListener("pointerdown", (event) => {
-    if (sheet) return; // the mobile sheet is already docked clear of the lyrics
-    if (event.target.closest("button")) return;
-    if (event.pointerType === "mouse" && event.button !== 0) return;
-
-    const box = ui.root.getBoundingClientRect();
-    const grabX = event.clientX - box.left;
-    const grabY = event.clientY - box.top;
-
-    // Grabbing the window pins it, so a hover preview cannot fade mid-drag.
-    pinned = true;
-    clearTimeout(showTimer);
-    clearTimeout(hideTimer);
-    ui.root.classList.add("is-pinned", "is-dragging");
-    head.setPointerCapture(event.pointerId);
-    event.preventDefault();
-
-    const onMove = (move) => place(move.clientX - grabX, move.clientY - grabY);
-    const onEnd = () => {
-      head.removeEventListener("pointermove", onMove);
-      head.removeEventListener("pointerup", onEnd);
-      head.removeEventListener("pointercancel", onEnd);
-      head.releasePointerCapture?.(event.pointerId);
-      ui.root.classList.remove("is-dragging");
-      updateMovedState();
-    };
-
-    head.addEventListener("pointermove", onMove);
-    head.addEventListener("pointerup", onEnd);
-    head.addEventListener("pointercancel", onEnd);
-  });
 }
 
 function renderReharmonization() {

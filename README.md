@@ -50,8 +50,9 @@ of a Supabase sync or a JSON backup.
 - Toggle **Re-harmonize** inside a chord popup to explore major/minor swaps,
   extended chords, and substitutions; hear a preview and replace that occurrence
 - Choose a main and accent colour under **Settings and syncing → Colours**
-- Drag the chord window by its header to park it clear of the lyrics, then click
-  straight through the other chords without it jumping back
+- Click a chord to open a harmony panel that stays open: on a wide screen it
+  docks down the right and the sheet reflows beside it, so you can scroll the
+  song and click through its chords with the panel holding still
 - Look up any chord from the **Chords** button in the header, with every voicing
   shown at once, and optional inversions and shapes with muted inner strings
 - Tune by ear from the **Tuner** panel in the sidebar, which plays the six
@@ -115,13 +116,22 @@ Suggestions are ordered gentler first, matching the tint ramp, with anything tha
 introduces a cross relation last inside its band. Where nothing separates two
 suggestions the written order stands, so the list stays recognisable.
 
-On a mouse or trackpad the chord window can be dragged by its header, so it can sit
-beside the sheet instead of over it. Once moved it stays where you put it: clicking
-another chord swaps the shapes and suggestions but leaves the window in place, and
-keeps the **Re-harmonize** panel open so you can work along a progression. The arrow
-button in the header sends it back to sitting under the selected chord. The position
-lasts for the session and is not saved. On a phone or tablet the window stays a
-bottom sheet, already clear of the lyrics.
+Clicking a chord opens the harmony panel, and it stays open until the close
+button dismisses it. Clicking elsewhere on the sheet does not close it, so the
+song can be scrolled and its chords clicked through while the panel holds still.
+Applying a chord leaves the panel on that same chord.
+
+On a window at least 1000px wide with a mouse or trackpad the panel docks down
+the right and the song column is padded clear of it, so the two never overlap.
+Narrower than that, or on a touch screen, it is a bottom sheet instead.
+Resizing across that width switches presentation without losing the panel.
+
+The docked column is full height with a single scroll, which is why the whole
+list of suggestions fits without a scrollbar of its own.
+
+Hovering a chord with a mouse still previews its shape in a small transient
+window. That is suppressed while the panel is open, where a preview following the
+mouse would keep pulling the panel off the chord being worked on.
 
 Select a suggestion to inspect its guitar shapes and compare **Hear original** with
 **Hear [chord]**. Audio uses a synthesized standard-tuning voicing without capo.

@@ -70,6 +70,21 @@ button:disabled {
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* The docked panel is fixed down the right, and the song column is padded clear
+   of it so the sheet reflows and the two never overlap.
+
+   The shell's grid is deliberately left alone. Adding a third track works, but
+   the scrim shares the grid as an in-flow child, so a third column changes the
+   auto-placement and the library jumps 70px wider the moment the panel opens.
+   Padding one column costs nothing and moves nothing else. */
+:root {
+  --harmony-width: clamp(340px, 28vw, 420px);
+}
+
+.app-shell.harmony-docked .song-panel {
+  padding-right: var(--harmony-width);
+}
+
 .app-shell.sidebar-collapsed .library-panel {
   display: none;
 }
@@ -1040,6 +1055,14 @@ textarea {
   display: none;
 }
 
+/* These float over the sheet rather than sitting in it, so the docked panel
+   would cover them. */
+.app-shell.harmony-docked ~ .autoscroll-controls,
+.app-shell.harmony-docked .autoscroll-controls {
+  right: calc(var(--harmony-width) + 24px);
+  width: min(430px, calc(100vw - var(--harmony-width) - 48px));
+}
+
 .autoscroll-controls button {
   min-width: 78px;
   color: #fff;
@@ -1364,67 +1387,47 @@ textarea {
   display: none;
 }
 
+.chord-popover.is-docked {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  width: var(--harmony-width);
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  max-height: none;
+  padding: 20px 20px 32px;
+  border-width: 0 0 0 1px;
+  border-radius: 0;
+  box-shadow: none;
+  overflow-y: auto;
+  animation: harmony-slide-in .18s ease-out;
+}
+
+@keyframes harmony-slide-in {
+  from { transform: translateX(12px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chord-popover.is-docked { animation: none; }
+}
+
+/* The hover preview carries the shape only. Reaching the panel is a click
+   away, so the preview does not need to offer it. */
+.chord-popover.is-floating .reharm-toggle,
+.chord-popover.is-floating .reharm-panel {
+  display: none;
+}
+
 .chord-popover-head {
   display: flex;
   align-items: flex-start;
   gap: 8px;
 }
 
-/* The header doubles as the drag handle, so the window can be parked clear of
-   the lyrics. The mobile sheet is already docked and stays fixed. */
-.chord-popover:not(.is-sheet) .chord-popover-head {
-  cursor: grab;
-  touch-action: none;
-}
 
-.chord-popover.is-dragging .chord-popover-head {
-  cursor: grabbing;
-}
-
-.chord-popover.is-dragging {
-  user-select: none;
-}
-
-.chord-popover-grip {
-  flex: none;
-  width: 9px;
-  height: 17px;
-  margin-top: 3px;
-  border-radius: 2px;
-  background-image: radial-gradient(currentColor 1px, transparent 1.1px);
-  background-size: 4px 4px;
-  background-position: 1px 2px;
-  color: var(--muted);
-  opacity: 0.75;
-}
-
-.chord-popover.is-sheet .chord-popover-grip {
-  display: none;
-}
-
-.chord-popover-snap {
-  flex: none;
-  min-height: 0;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  border-radius: 6px;
-  color: var(--muted);
-  background: none;
-  font-size: 15px;
-  line-height: 1;
-}
-
-.chord-popover-snap[hidden] {
-  display: none;
-}
-
-.chord-popover-snap:hover,
-.chord-popover-snap:focus-visible {
-  color: var(--accent-strong);
-  background: var(--accent-soft);
-}
 
 .chord-popover-titles {
   flex: 1;
@@ -1461,7 +1464,7 @@ textarea {
   line-height: 1;
 }
 
-.chord-popover:not(.is-sheet) .chord-popover-close {
+.chord-popover.is-floating .chord-popover-close {
   display: none;
 }
 
@@ -1765,11 +1768,11 @@ textarea {
 .chord-lyric-pair.is-reharmonized .mobile-flow-chord,
 .chord-lyric-pair.is-reharmonized .mobile-flow-lyric { white-space: pre-wrap; }
 .chord-lyric-pair.is-reharmonized .mobile-flow-chord { color: var(--accent-strong); font-weight: 700; }
-.chord-popover.is-reharmonizing { width: min(400px, calc(100vw - 20px)); }
-.chord-popover { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
+.chord-popover.is-reharmonizing:not(.is-docked) { width: min(400px, calc(100vw - 20px)); }
+.chord-popover:not(.is-docked) { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
 .chord-popover.is-reharmonizing .chord-diagram { max-width: 152px; }
-.chord-popover.is-pinned .chord-popover-close { display: block; min-width: 30px; min-height: 30px; }
-.chord-popover-head button { cursor: pointer; touch-action: auto; }
+.chord-popover.is-docked .chord-popover-close,
+.chord-popover.is-sheet .chord-popover-close { display: block; min-width: 30px; min-height: 30px; }
 .chord-popover .reharm-toggle { width: 100%; min-height: 38px; margin-top: 12px; }
 .chord-popover .reharm-toggle[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent); }
 .reharm-panel { margin-top: 12px; }
@@ -1779,6 +1782,9 @@ textarea {
 /* One row per alternative. Most of the list is legible at once, and the audio
    and apply controls below stay in reach instead of being scrolled past. */
 .reharm-options { display: grid; gap: 4px; max-height: min(248px, 32dvh); overflow-y: auto; margin: 10px 0; padding: 2px; overscroll-behavior: contain; }
+/* A full-height column scrolls as one thing, so the list does not need a cap
+   or a scrollbar of its own. */
+.chord-popover.is-docked .reharm-options { max-height: none; overflow-y: visible; }
 .chord-popover .reharm-option { display: grid; grid-template-columns: minmax(50px, auto) 1fr; align-items: baseline; text-align: left; gap: 4px 10px; padding: 7px 10px; border-radius: 9px; min-height: 0; }
 .reharm-option strong { color: var(--accent-strong); font-size: 15px; }
 .reharm-option span { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
@@ -1831,5 +1837,5 @@ textarea {
 .reharm-draft span { color: var(--muted); font-size: 12px; margin-right: auto; }
 .reharm-draft button { font-size: 12px; min-height: 36px; }
 @media (max-width: 600px), (hover: none) {
-  .chord-popover.is-reharmonizing:not(.is-dragged) { left: 10px !important; right: 10px; bottom: 12px; top: auto !important; width: auto; max-height: calc(100dvh - 24px); }
+  .chord-popover.is-reharmonizing:not(.is-docked) { left: 10px !important; right: 10px; bottom: 12px; top: auto !important; width: auto; max-height: calc(100dvh - 24px); }
 }
