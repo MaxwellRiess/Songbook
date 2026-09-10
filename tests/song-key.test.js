@@ -1,9 +1,80 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CONFIDENCE_FLOOR, inferKey, isDiatonic, romanNumeral, scaleDegree } from "../public/song-key.js";
+import { CONFIDENCE_FLOOR, inferKey, isDiatonic, rankKeys, romanNumeral, scaleDegree } from "../public/song-key.js";
 import { collectSongChords, songChordSequence } from "../public/chord-explorer.js";
+import { KEY_CORPUS } from "./fixtures/keys.js";
 
 const song = (rawContent) => ({ rawContent });
+
+/* The corpus is the real specification for the scoring weights. Every song in
+   it either has an answer the inference must reach, or is one it must refuse. */
+test("every song in the corpus is read as a musician would read it", () => {
+  const failures = [];
+  for (const entry of KEY_CORPUS) {
+    const key = inferKey(entry.chords);
+    const want = entry.ambiguous ? null : entry.key || entry.knownLimit;
+    const got = key?.confident ? key.name : null;
+    if (got !== want) {
+      failures.push(`${entry.name}: wanted ${want || "no answer"}, got ${got || "no answer"} (${key.name} at ${key.confidence.toFixed(3)})`);
+    }
+  }
+  assert.deepEqual(failures, []);
+});
+
+test("the confidence floor sits clear of both bands of the corpus", () => {
+  // A floor wedged between the two bands is what makes holding back meaningful.
+  // If these ever cross, the weights need revisiting, not the floor.
+  const margins = KEY_CORPUS.map((entry) => ({
+    ambiguous: Boolean(entry.ambiguous),
+    confidence: inferKey(entry.chords).confidence
+  }));
+  const nameable = margins.filter((entry) => !entry.ambiguous).map((entry) => entry.confidence);
+  const refusable = margins.filter((entry) => entry.ambiguous).map((entry) => entry.confidence);
+  const floorOfNameable = Math.min(...nameable);
+  const ceilingOfRefusable = Math.max(...refusable);
+  assert.ok(ceilingOfRefusable < CONFIDENCE_FLOOR, `refusable reached ${ceilingOfRefusable}`);
+  assert.ok(floorOfNameable > CONFIDENCE_FLOOR, `nameable fell to ${floorOfNameable}`);
+});
+
+test("repeating a progression does not talk the inference out of its answer", () => {
+  /* The margin per chord is not scale-free, because the bonuses for the first
+     chord, the last chord and the closing cadence are paid once however long
+     the song runs. What matters is that a repeat stays clearly nameable, not
+     that the number is identical. */
+  const once = inferKey(["Dm7", "G7", "Cmaj7"]);
+  const fourTimes = inferKey([...Array(4)].flatMap(() => ["Dm7", "G7", "Cmaj7"]));
+  assert.equal(once.name, "C major");
+  assert.equal(fourTimes.name, "C major");
+  assert.ok(once.confident && fourTimes.confident);
+  assert.ok(fourTimes.confidence > CONFIDENCE_FLOOR * 3,
+    `a repeat fell to ${fourTimes.confidence.toFixed(3)}, close to the floor`);
+});
+
+test("ranks every candidate key so a close call can be inspected", () => {
+  const ranked = rankKeys(["C", "F", "G", "C"]);
+  assert.equal(ranked.length, 24);
+  assert.equal(ranked[0].name, "C major");
+  assert.ok(ranked[0].score > ranked[1].score);
+  assert.deepEqual(rankKeys(["C"]), []);
+});
+
+test("a closing authentic cadence outweighs one that merely stops on the tonic", () => {
+  // The pair that ends the song is the strongest evidence there is, and a
+  // plagal stop is not given the same weight as a dominant resolving.
+  const resolved = rankKeys(["C", "Am", "F", "G", "C"]);
+  const stopped = rankKeys(["C", "Am", "G", "F", "C"]);
+  const cMajor = (ranked) => ranked.find((entry) => entry.name === "C major").score;
+  assert.ok(cMajor(resolved) > cMajor(stopped),
+    `${cMajor(resolved)} should beat ${cMajor(stopped)}`);
+});
+
+test("a dominant seventh on the tonic and the fourth reads as the blues, not as another key", () => {
+  // Without this the twelve-bar in A reads as D major, because there A7 is the
+  // diatonic dominant and A major's own tonic chord is not in its scale.
+  const blues = inferKey(["A7", "D7", "A7", "A7", "D7", "D7", "A7", "A7", "E7", "D7", "A7", "E7"]);
+  assert.equal(blues.name, "A major");
+  assert.ok(blues.confident);
+});
 
 test("names the key of songs that lean on a tonic and its dominant", () => {
   for (const [expected, chords] of [
@@ -21,9 +92,10 @@ test("names the key of songs that lean on a tonic and its dominant", () => {
 });
 
 test("holds back when a song sits evenly between relative keys", () => {
-  // Both readings use the same diatonic chords, and nothing anchors either
-  // tonic, so naming one would be a guess dressed up as an answer.
-  for (const chords of [["Am", "F", "C", "G"], ["Em", "C", "G", "D"]]) {
+  // Both readings use the same diatonic chords, neither key's dominant appears,
+  // and no motion between them cadences, so the candidates tie exactly and
+  // naming one would be a guess dressed up as an answer.
+  for (const chords of [["C", "Am", "C", "Am"], ["C", "D", "Eb", "F#"]]) {
     const key = inferKey(chords);
     assert.ok(!key.confident, `${chords.join(" ")} claimed ${key.name} at ${key.confidence.toFixed(3)}`);
   }

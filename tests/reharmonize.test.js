@@ -131,7 +131,7 @@ test('offers a flat seventh only once the chord is known to be the tonic or the 
   assert.ok(!names('G', { key: cMajor }).includes('G7#5'));
   // Without a key, and with an unconfident one, neither appears.
   assert.ok(!names('C').includes('C7'));
-  assert.ok(!names('C', { key: inferKey(['Am', 'F', 'C', 'G']) }).includes('C7'));
+  assert.ok(!names('C', { key: inferKey(['C', 'Am', 'C', 'Am']) }).includes('C7'));
 });
 
 test('labels each suggestion with its degree and whether it is in the key', () => {
