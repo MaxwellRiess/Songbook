@@ -11,6 +11,7 @@
 import { getVoicings, parseChordSymbol } from "./chord-voicings.js";
 import { createChordDiagram, positionLabel } from "./chord-diagram.js";
 import { suggestReharmonizations } from "./reharmonize.js";
+import { romanNumeral } from "./song-key.js";
 import { playChordVoicing, stopChordAudio } from "./chord-audio.js";
 
 const STRENGTH_WORDS = {
@@ -425,7 +426,12 @@ function renderReharmonization() {
   const original = anchor.dataset.originalChord || anchor.dataset.chord;
   const context = callbacks.getContext?.(anchor) || {};
   const options = suggestReharmonizations(original, context);
-  ui.root.querySelector(".reharm-context").textContent = `Original ${original}${context.nextChord ? ` → next ${context.nextChord}` : ""}`;
+  /* Reads as the run of chords it sits in, then what the chord is doing there
+     when the key is known well enough to say. */
+  const run = [context.prevChord, original, context.nextChord].filter(Boolean).join(" → ");
+  const numeral = context.key?.confident ? romanNumeral(original, context.key) : "";
+  ui.root.querySelector(".reharm-context").textContent =
+    numeral ? `${run} · ${numeral} in ${context.key.name}` : run;
   const list = ui.root.querySelector(".reharm-options");
   list.replaceChildren();
   for (const candidate of options) {
@@ -436,8 +442,10 @@ function renderReharmonization() {
        label for it. Colour alone cannot be the whole message, so the words go
        in the accessible name and the tooltip instead. */
     button.dataset.strength = String(candidate.strength);
-    button.title = `${candidate.flavor} · ${STRENGTH_WORDS[candidate.strength]}`;
-    button.setAttribute("aria-label", `${candidate.symbol}, ${candidate.flavor}, ${STRENGTH_WORDS[candidate.strength]}`);
+    const rub = candidate.transitionNote && candidate.rubs ? ", rubs against a neighbouring chord" : "";
+    button.classList.toggle("has-rub", Boolean(candidate.rubs));
+    button.title = `${candidate.flavor} · ${STRENGTH_WORDS[candidate.strength]}${candidate.transitionNote ? `\n${candidate.transitionNote}` : ""}`;
+    button.setAttribute("aria-label", `${candidate.symbol}, ${candidate.flavor}, ${STRENGTH_WORDS[candidate.strength]}${rub}`);
     const name = document.createElement("strong"); name.textContent = candidate.symbol;
     const flavor = document.createElement("span"); flavor.textContent = candidate.flavor;
     button.append(name, flavor);
@@ -449,7 +457,12 @@ function renderReharmonization() {
       const shared = candidate.commonNotes.length ? `Shared: ${candidate.commonNotes.join(" ")}.` : "No shared chord tones.";
       const added = candidate.addedNotes.length ? ` Adds: ${candidate.addedNotes.join(" ")}.` : "";
       const removed = candidate.removedNotes.length ? ` Removes: ${candidate.removedNotes.join(" ")}.` : "";
-      ui.root.querySelector(".reharm-detail").textContent = `${candidate.explanation} ${shared}${added}${removed}`;
+      const place = candidate.numeral
+        ? ` ${candidate.numeral}, ${candidate.diatonic ? "inside" : "outside"} the key.`
+        : "";
+      const join = candidate.transitionNote ? ` ${candidate.transitionNote}` : "";
+      ui.root.querySelector(".reharm-detail").textContent =
+        `${candidate.explanation}${place} ${shared}${added}${removed}${join}`;
       ui.root.querySelector(".reharm-apply").disabled = !callbacks.onReplace || candidate.symbol === anchor.dataset.chord;
       ui.root.querySelector(".reharm-status").textContent = "";
       reposition();

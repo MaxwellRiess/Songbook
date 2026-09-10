@@ -31,7 +31,8 @@ import { renderSheet as buildSheetFragment, renderedSheetText } from "./song-ren
 import { initFollowMode } from "./follow-mode.js";
 import { closeChordPopover, initChordPopover } from "./chord-popover.js";
 import { DEFAULT_ACCENT, DEFAULT_MAIN, deriveTint, isDefaultTint } from "./palette.js";
-import { collectSongChords, initChordExplorer } from "./chord-explorer.js";
+import { inferKey } from "./song-key.js";
+import { collectSongChords, initChordExplorer, songChordSequence } from "./chord-explorer.js";
 import { initTuner } from "./tuner.js";
 import { ReharmonizationDrafts } from "./reharmonize.js";
 import { transposeChord } from "./chord-utils.js";
@@ -50,6 +51,7 @@ const state = {
   expandedArtistKeys: new Set(),
   expandedPlaylistIds: new Set(),
   transpose: 0,
+  songKey: null,
   fontSize: 16,
   autoscrollActive: false,
   autoscrollSpeed: 32,
@@ -181,11 +183,11 @@ initFollowMode({
   onBeforeStart: stopAutoscroll
 });
 initChordPopover(elements.viewer, {
-  getContext: token => {
-    const nextId = Number(token.dataset.chordId) + 1;
-    const next = elements.viewer.querySelector(`[data-chord-id="${nextId}"]`);
-    return { nextChord: next?.dataset.chord || "" };
-  },
+  getContext: token => ({
+    prevChord: neighbourChord(token, -1),
+    nextChord: neighbourChord(token, 1),
+    key: state.songKey
+  }),
   onReplace: (token, alternative) => {
     const song = getSelectedSong();
     if (!song) return;
@@ -967,8 +969,29 @@ function applyColourChoice() {
 
 function renderSheet(song) {
   closeChordPopover();
+  // Inferred from the chords as displayed, so it matches the transposed symbols
+  // the popover works with.
+  state.songKey = inferKey(songChordSequence(song, state.transpose));
   elements.viewer.replaceChildren(buildSheetFragment(song, state.transpose, reharmonizationDrafts.forSong(song)));
   updateReharmonizationControls(song);
+}
+
+/* Chord ids run straight through the sheet, so the id after a verse's last chord
+   is the chorus's first. A neighbour is only offered from inside the same
+   section, which is what a player actually plays before and after it. */
+function sectionIndex(element) {
+  let index = 0;
+  for (const label of elements.viewer.querySelectorAll(".section-label")) {
+    if (label.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) index += 1;
+  }
+  return index;
+}
+
+function neighbourChord(token, offset) {
+  const id = Number(token.dataset.chordId) + offset;
+  const neighbour = elements.viewer.querySelector(`[data-chord-id="${id}"]`);
+  if (!neighbour) return "";
+  return sectionIndex(neighbour) === sectionIndex(token) ? neighbour.dataset.chord || "" : "";
 }
 
 function getDraftSong() {
