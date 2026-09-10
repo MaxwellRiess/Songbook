@@ -1414,11 +1414,18 @@ textarea {
   .chord-popover.is-docked { animation: none; }
 }
 
-/* The hover preview carries the shape only. Reaching the panel is a click
-   away, so the preview does not need to offer it. */
-.chord-popover.is-floating .reharm-toggle,
+/* The small window carries the shape and one small way in. The suggestions and
+   approaches belong to the panel, and stay there. */
 .chord-popover.is-floating .reharm-panel {
   display: none;
+}
+
+.chord-popover.is-floating .reharm-toggle {
+  width: auto;
+  min-height: 0;
+  margin: 10px auto 0;
+  padding: 5px 12px;
+  font-size: 11px;
 }
 
 .chord-popover-head {

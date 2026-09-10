@@ -12,10 +12,14 @@
    for, and it also frees the panel from having to fit inside a viewport-height
    box, so the reharmonize options and the approaches have room.
 
-   Hovering a chord still previews its shape, as a small transient window with
-   just the diagram in it. That is suppressed while the panel is open, where
-   moving the mouse would otherwise keep pulling the panel off the chord being
-   worked on. */
+   Hovering a chord previews its shape in a small window, and clicking one keeps
+   that window up so the voicings can be stepped through without the panel in
+   the way. The window carries a small Re-harmonize button, and that is the only
+   thing that opens the panel: looking up a shape and reaching for harmony are
+   different jobs, and the smaller one should not drag the larger one open.
+
+   Previews are suppressed while the panel is open, where moving the mouse would
+   otherwise keep pulling the panel off the chord being worked on. */
 
 import { getVoicings, parseChordSymbol } from "./chord-voicings.js";
 import { createChordDiagram, positionLabel } from "./chord-diagram.js";
@@ -39,9 +43,12 @@ let anchor = null;
 let symbol = null;
 let voicings = [];
 let index = 0;
-/* "floating" is the transient hover preview. "docked" and "sheet" are the two
-   presentations of the persistent panel, chosen by how much room there is. */
+/* "floating" is the small chord window. "docked" and "sheet" are the two
+   presentations of the panel, chosen by how much room there is. A floating
+   window is transient while it is only being hovered, and sticky once it has
+   been clicked, which is what lets the voicings be stepped through. */
 let mode = "floating";
+let sticky = false;
 let showTimer = 0;
 let hideTimer = 0;
 let callbacks = {};
@@ -57,6 +64,9 @@ function persistentMode() {
 }
 
 const isOpenPanel = () => mode !== "floating" && ui && !ui.root.hidden;
+/* Anything the reader has committed to by clicking. Hovering elsewhere must not
+   pull it away from the chord being looked at. */
+const isHeld = () => Boolean(ui) && !ui.root.hidden && (mode !== "floating" || sticky);
 
 export function initChordPopover(root, options = {}) {
   if (!root) return;
@@ -65,9 +75,9 @@ export function initChordPopover(root, options = {}) {
 
   root.addEventListener("pointerover", (event) => {
     if (event.pointerType !== "mouse") return;
-    // A preview that follows the mouse would keep pulling an open panel off the
-    // chord being worked on.
-    if (isOpenPanel()) return;
+    // A preview that follows the mouse would keep pulling an open panel, or a
+    // window that was clicked open, off the chord being looked at.
+    if (isHeld()) return;
     const token = event.target.closest?.(".chord-token");
     if (!token || token === anchor) return;
     clearTimeout(hideTimer);
@@ -76,7 +86,7 @@ export function initChordPopover(root, options = {}) {
   });
 
   root.addEventListener("pointerout", (event) => {
-    if (event.pointerType !== "mouse" || isOpenPanel()) return;
+    if (event.pointerType !== "mouse" || isHeld()) return;
     if (!event.target.closest?.(".chord-token")) return;
     clearTimeout(showTimer);
     scheduleHide();
@@ -88,15 +98,20 @@ export function initChordPopover(root, options = {}) {
     event.preventDefault();
     clearTimeout(showTimer);
     clearTimeout(hideTimer);
-    if (isOpenPanel() && token === anchor) close();
-    else open(token, { mode: persistentMode() });
+    if (isHeld() && token === anchor) close();
+    // Clicking a chord holds the small window open. The panel is only opened
+    // from the button inside it, or by clicking another chord once it is open.
+    else if (isOpenPanel()) open(token, { mode });
+    else open(token, { mode: "floating", sticky: true });
   });
 
   root.addEventListener("keydown", event => {
     const token = event.target.closest?.(".chord-token");
     if (token && (event.key === "Enter" || event.key === " ")) {
       event.preventDefault();
-      open(token, { mode: persistentMode() });
+      if (isOpenPanel()) open(token, { mode });
+      else open(token, { mode: "floating", sticky: true });
+      // Focus lands on the way into the panel, so a keyboard reaches it too.
       ui.root.querySelector(".reharm-toggle").focus();
     }
   });
@@ -238,8 +253,14 @@ function ensureUi() {
   ui.prev.addEventListener("click", () => step(-1));
   ui.next.addEventListener("click", () => step(1));
   root.querySelector(".reharm-toggle").addEventListener("click", () => {
-    reharmonizing = !reharmonizing;
     clearTimeout(hideTimer);
+    if (mode === "floating") {
+      // From the small window this is the way in, not a toggle.
+      applyMode(persistentMode());
+      reharmonizing = true;
+    } else {
+      reharmonizing = !reharmonizing;
+    }
     renderReharmonization();
     reposition();
   });
@@ -260,7 +281,7 @@ function ensureUi() {
   return ui;
 }
 
-function open(token, { mode: wanted, keepPanel: forcePanel }) {
+function open(token, { mode: wanted, sticky: hold = false, keepPanel: forcePanel }) {
   stopChordAudio();
   const next = token.dataset.chord || token.textContent.trim();
   const parsed = parseChordSymbol(next);
@@ -282,15 +303,21 @@ function open(token, { mode: wanted, keepPanel: forcePanel }) {
 
   ui.name.textContent = symbol;
   ui.quality.textContent = parsed ? `${parsed.qualityName} · ${parsed.notes.join(" ")}` : "unrecognised chord";
+  sticky = hold;
   applyMode(wanted);
   ui.root.hidden = false;
   token.classList.add("chord-token-active");
 
   render();
-  // A hover preview shows the shape and nothing else, so none of the panel's
-  // work is done for it.
-  if (mode === "floating") ui.root.querySelector(".reharm-panel").hidden = true;
-  else renderReharmonization();
+  /* The small window shows a shape and a way in, so none of the panel's own
+     work is done for it. */
+  if (mode === "floating") {
+    ui.root.querySelector(".reharm-panel").hidden = true;
+    ui.root.querySelector(".reharm-toggle").textContent = "Re-harmonize";
+    ui.root.querySelector(".reharm-toggle").setAttribute("aria-expanded", "false");
+  } else {
+    renderReharmonization();
+  }
   reposition();
 }
 
@@ -330,16 +357,16 @@ function step(direction) {
   if (next < 0 || next >= voicings.length) return;
   index = next;
   CHOSEN.set(symbol, index);
-  // Stepping through voicings is deliberate enough to keep the window around,
-  // so a hover preview becomes the panel.
-  if (mode === "floating") applyMode(persistentMode());
+  // Stepping shapes is what the small window is for, so it holds rather than
+  // escalating into the panel.
+  sticky = true;
   clearTimeout(hideTimer);
   render();
   reposition();
 }
 
 function scheduleHide() {
-  if (mode !== "floating") return;
+  if (mode !== "floating" || sticky) return;
   clearTimeout(hideTimer);
   hideTimer = setTimeout(close, HIDE_DELAY);
 }
@@ -352,6 +379,9 @@ function applyMode(wanted) {
   ui.root.classList.toggle("is-sheet", mode === "sheet");
   ui.root.classList.toggle("is-docked", mode === "docked");
   ui.root.classList.toggle("is-floating", mode === "floating");
+  /* The suggestions belong to the panel, so the class that widens the window
+     for them has to come off on the way back to a small one. */
+  if (mode === "floating") ui.root.classList.remove("is-reharmonizing");
   ui.root.setAttribute("aria-label", mode === "floating" ? "Chord shape" : "Harmony panel");
   document.querySelector("#appShell")?.classList.toggle("harmony-docked", mode === "docked");
   if (mode !== "floating") {
@@ -366,6 +396,7 @@ function close() {
   clearTimeout(hideTimer);
   anchor?.classList.remove("chord-token-active");
   anchor = null;
+  sticky = false;
   if (ui) {
     ui.root.hidden = true;
     ui.root.classList.remove("is-docked", "is-sheet");

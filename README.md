@@ -50,9 +50,11 @@ of a Supabase sync or a JSON backup.
 - Toggle **Re-harmonize** inside a chord popup to explore major/minor swaps,
   extended chords, and substitutions; hear a preview and replace that occurrence
 - Choose a main and accent colour under **Settings and syncing → Colours**
-- Click a chord to open a harmony panel that stays open: on a wide screen it
-  docks down the right and the sheet reflows beside it, so you can scroll the
-  song and click through its chords with the panel holding still
+- Hover or click a chord for a small window with its shapes, and step through
+  the voicings there without anything else opening
+- Its **Re-harmonize** button opens the harmony panel, which stays open: on a
+  wide screen it docks down the right and the sheet reflows beside it, so you
+  can scroll the song and click through its chords with the panel holding still
 - Look up any chord from the **Chords** button in the header, with every voicing
   shown at once, and optional inversions and shapes with muted inner strings
 - Tune by ear from the **Tuner** panel in the sidebar, which plays the six
@@ -116,8 +118,17 @@ Suggestions are ordered gentler first, matching the tint ramp, with anything tha
 introduces a cross relation last inside its band. Where nothing separates two
 suggestions the written order stands, so the list stays recognisable.
 
-Clicking a chord opens the harmony panel, and it stays open until the close
-button dismisses it. Clicking elsewhere on the sheet does not close it, so the
+Hovering a chord shows a small window with its shape, the arrows for stepping
+through voicings, and one small **Re-harmonize** button. Clicking a chord holds
+that window open so the shapes can be stepped through without the panel in the
+way, and hovering elsewhere no longer pulls it off the chord being looked at.
+Clicking away dismisses it.
+
+The button is the only thing that opens the panel. Looking up a shape and
+reaching for harmony are different jobs, and the smaller one should not drag the
+larger one open.
+
+Once the panel is open it stays open until the close button dismisses it. Clicking elsewhere on the sheet does not close it, so the
 song can be scrolled and its chords clicked through while the panel holds still.
 Applying a chord leaves the panel on that same chord.
 
@@ -129,9 +140,9 @@ Resizing across that width switches presentation without losing the panel.
 The docked column is full height with a single scroll, which is why the whole
 list of suggestions fits without a scrollbar of its own.
 
-Hovering a chord with a mouse still previews its shape in a small transient
-window. That is suppressed while the panel is open, where a preview following the
-mouse would keep pulling the panel off the chord being worked on.
+While the panel is open, hovering another chord does not open a preview over it:
+a window following the mouse would keep pulling attention off the chord being
+worked on. Clicking another chord moves the panel to it, as before.
 
 Select a suggestion to inspect its guitar shapes and compare **Hear original** with
 **Hear [chord]**. Audio uses a synthesized standard-tuning voicing without capo.
