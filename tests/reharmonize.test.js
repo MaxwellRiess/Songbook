@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { describeProgression, suggestReharmonizations, transition, ReharmonizationDrafts } from '../public/reharmonize.js';
+import { describeProgression, reachChip, suggestReharmonizations, transition, ReharmonizationDrafts } from '../public/reharmonize.js';
 import { inferKey } from '../public/song-key.js';
 import { parseChordSymbol } from '../public/chord-voicings.js';
 
@@ -119,7 +119,7 @@ test('keeps the written order where nothing separates two suggestions', () => {
   // Without neighbours every tie-breaker is zero, so only the strength bands
   // move anything and the order inside each band is the one written down.
   const names = suggestReharmonizations('Am').filter(item => item.strength === 1).map(item => item.symbol);
-  assert.deepEqual(names, ['Am7', 'Am9', 'Am11', 'Am6']);
+  assert.deepEqual(names, ['Am7', 'Am9', 'Am11', 'Am6', 'Am13', 'Amadd9']);
 });
 
 test('offers a flat seventh only once the chord is known to be the tonic or the fourth', () => {
@@ -305,4 +305,96 @@ test('every suggestion carries words for its band, since the tint cannot speak',
     assert.ok(option.strengthNote, option.symbol);
     assert.ok(option.strength >= 1 && option.strength <= 4, option.symbol);
   }
+});
+
+/* ---------- suggestions drawn from the shape the chord sits in ---------- */
+
+const cMajor = () => inferKey(['Dm7', 'G7', 'Cmaj7', 'Dm7', 'G7', 'Cmaj7']);
+
+test('a repeated chord is offered movement rather than more colour', () => {
+  const key = cMajor();
+  const options = suggestReharmonizations('C', { prevChord: 'C', nextChord: 'F', key });
+  const names = options.map(item => item.symbol);
+  // The cheapest movement under a chord that does not change is its own bass.
+  assert.ok(names.includes('C/E'), 'over its third');
+  assert.ok(names.includes('C/G'), 'over its fifth');
+  // Both keep every note, so both sit in the gentlest band.
+  assert.equal(options.find(item => item.symbol === 'C/E').strength, 1);
+  // And the inner line that walks while the root holds, named as what it is.
+  const cliche = options.find(item => item.flavor === 'Line cliché');
+  assert.equal(cliche.symbol, 'Cmaj7');
+  assert.match(cliche.explanation, /C → Cmaj7 → C7/);
+  // None of it is offered where the chord is not repeated.
+  const once = suggestReharmonizations('C', { prevChord: 'G', nextChord: 'F', key }).map(item => item.symbol);
+  assert.ok(!once.includes('C/E'));
+  assert.ok(!once.includes('C/G'));
+});
+
+test('a chord already over a bass note is not given a second one', () => {
+  // The decision has been made for it, and stacking a slash on a slash would
+  // not say anything.
+  const options = suggestReharmonizations('C/E', { prevChord: 'C/E', nextChord: 'F', key: cMajor() });
+  for (const option of options) assert.ok(option.symbol.split('/').length <= 2, option.symbol);
+});
+
+test('the shapes that lean on the next chord are offered the diminished under it', () => {
+  const key = cMajor();
+  const lean = (context) => suggestReharmonizations(context.symbol, context)
+    .find(item => /^Lean into/.test(item.flavor));
+  // Inside a ii-V-I, the dominant without its root.
+  const inTwoFive = lean({ symbol: 'G7', prevChord: 'Dm7', nextChord: 'Cmaj7', key });
+  assert.equal(inTwoFive.symbol, 'Bdim7');
+  assert.equal(inTwoFive.strength, 4);
+  // On a deceptive cadence, leaning into the sixth degree it sidesteps to.
+  assert.equal(lean({ symbol: 'G7', prevChord: 'C', nextChord: 'Am', key }).symbol, 'G#dim7');
+  // On a repeated chord, leaning out of the bar instead of sitting in it.
+  assert.equal(lean({ symbol: 'C', prevChord: 'C', nextChord: 'F', key }).symbol, 'Edim7');
+  // Nothing to lean into where the chord makes no shape at all.
+  assert.equal(lean({ symbol: 'F', prevChord: 'C', nextChord: 'G', key }), undefined);
+});
+
+test('a dominant of the next chord can be stepped through instead of arrived on', () => {
+  const key = cMajor();
+  const delay = suggestReharmonizations('A7', { prevChord: 'C', nextChord: 'Dm7', key })
+    .find(item => /^Delay/.test(item.flavor));
+  // Only one chord fits where one chord was, so this is the second degree of
+  // the target standing where its dominant stood. A minor target takes the
+  // half-diminished second, which is the minor two-five.
+  assert.equal(delay.symbol, 'Em7b5');
+  const major = suggestReharmonizations('G7', { prevChord: 'Am', nextChord: 'C', key })
+    .find(item => /^Delay/.test(item.flavor));
+  assert.equal(major.symbol, 'Dm7');
+});
+
+test('a diminished seventh is offered the root it was standing in for', () => {
+  // Bdim7 is G7b9 without its root, so putting the root back states outright
+  // what the chord was already doing.
+  const option = suggestReharmonizations('Bdim7').find(item => item.flavor === 'Give it a root');
+  assert.equal(option.symbol, 'G7b9');
+  assert.equal(option.strength, 4);
+});
+
+test('fills the gaps the quality table used to leave', () => {
+  const has = (chord, name) => names(chord).includes(name);
+  for (const [chord, name] of [
+    ['C', 'C6'], ['C', 'Cmaj13'], ['C', 'Csus2'],
+    ['Am', 'Am13'], ['Am', 'Amadd9'],
+    ['G7', 'G7alt'],
+    ['E5', 'E7']
+  ]) assert.ok(has(chord, name), `${name} for ${chord}`);
+});
+
+test('names each band in a word or two for the filter chips', () => {
+  // The middle two bands mean something different once there is a key to
+  // measure against, and the chips have to say which.
+  assert.equal(reachChip(2, true), 'In key');
+  assert.equal(reachChip(2, false), 'Same root');
+  assert.equal(reachChip(3, true), 'Outside');
+  assert.equal(reachChip(3, false), 'New root');
+  // The outer two mean the same thing either way.
+  for (const keyed of [true, false]) {
+    assert.equal(reachChip(1, keyed), 'Colour');
+    assert.equal(reachChip(4, keyed), 'Redirect');
+  }
+  assert.equal(reachChip(9, true), '');
 });

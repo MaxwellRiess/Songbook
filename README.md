@@ -47,8 +47,10 @@ of a Supabase sync or a JSON backup.
 - Transpose chords in the viewer without changing the saved original
 - Hover a chord (or tap it on a phone) to see how to play it, and step through
   voicings from the open shape up the neck
-- Toggle **Re-harmonize** inside a chord popup to explore major/minor swaps,
-  extended chords, and substitutions; hear a preview and replace that occurrence
+- Open the harmony panel on any chord to explore extensions, borrowed chords,
+  substitutions from elsewhere in the key and chords that change where the
+  progression goes; filter by how far each reaches, hear it between its
+  neighbours, and replace that occurrence
 - Choose a main and accent colour under **Settings and syncing → Colours**
 - Hover or click a chord for a small window with its shapes, and step through
   the voicings there without anything else opening
@@ -105,6 +107,17 @@ and a dominant of whatever follows. Inside a two-five-one the tritone substitute
 explains itself as the bass walk it makes, `D → Db → C`, rather than in general
 terms.
 
+Each of those shapes also asks for something different, and offers it. A chord
+played twice is the clearest case: it is asking for movement, so it is offered
+the same chord over its own third or fifth, where the bass moves and the
+harmony holds, and the line cliché that walks an inner voice while the root
+stays put. Where the next chord is the point of the bar, which is what the
+other shapes have in common, the diminished a semitone under it is offered to
+lean up into it: inside a two-five-one that is the dominant without its root,
+and on a deceptive cadence it turns the sidestep into an arrival. A dominant of
+whatever follows can also be stepped through rather than arrived on, by putting
+the target's second degree where its dominant was.
+
 With a key in hand, each suggestion is labelled with its degree and whether it
 sits inside the key, and a second set of suggestions becomes available: the ones
 that come from what the chord is *doing* rather than from what it is.
@@ -139,6 +152,15 @@ Suggestions are ordered gentler first, matching the tint ramp, with anything tha
 introduces a cross relation last inside its band. Where nothing separates two
 suggestions the written order stands, so the list stays recognisable.
 
+A row of chips above the list cuts it to the bands you want, each carrying its
+own count. Clicking a band while everything is showing narrows to that band
+alone, which is the move being reached for on a phone; after that the chips
+toggle, so two bands can be read together, and turning the last one off means
+all again rather than an empty list. The choice carries across chords, because
+narrowing to the bold end is a way of reading a whole song rather than a
+decision about one chord. **All** is the default, so a docked panel with room
+for the lot still shows the lot.
+
 Hovering a chord shows a small window with its shape, the arrows for stepping
 through voicings, and one small **Re-harmonize** button. Clicking a chord holds
 that window open so the shapes can be stepped through without the panel in the
@@ -159,14 +181,27 @@ Narrower than that, or on a touch screen, it is a bottom sheet instead.
 Resizing across that width switches presentation without losing the panel.
 
 The docked column is full height with a single scroll, which is why the whole
-list of suggestions fits without a scrollbar of its own.
+list of suggestions fits without a scrollbar of its own. As a bottom sheet the
+list is capped and scrolls inside itself, and fades out over its last rows
+wherever there is more underneath: a scrollbar that appears only once you are
+already scrolling cannot tell you whether anything is down there.
+
+The panel is the reharmonize view, so it opens showing its suggestions rather
+than a button that offers them. A small **Hide** beside the context line stands
+them down and gives the whole width to one chord shape; **Show** brings them
+back. That choice outlives the chord being looked at, since collapsing it once
+and having it spring back on the next chord would not be a preference at all.
 
 While the panel is open, hovering another chord does not open a preview over it:
 a window following the mouse would keep pulling attention off the chord being
 worked on. Clicking another chord moves the panel to it, as before.
 
-Select a suggestion to inspect its guitar shapes and compare **Hear original** with
-**Hear [chord]**. Audio uses a synthesized standard-tuning voicing without capo.
+Select a suggestion to inspect its guitar shapes and hear it where it sits. The
+audio row is laid out as the bar is: the chord before on the left, the chord
+after on the right, and the middle holding the chord as written over whatever
+has been picked for it, with the columns named underneath. Hearing a suggestion
+on its own says how it sounds; hearing it between its neighbours says whether it
+works. Audio uses a synthesized standard-tuning voicing without capo.
 **Use this chord** changes only that occurrence and marks it with a dotted underline.
 Transpose continues to work on the arrangement. Reopen the chord to **Restore
 original chord**, or use **Reset chords** to clear all replacements for the song.

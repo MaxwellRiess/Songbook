@@ -43,7 +43,13 @@ const QUALITIES = {
   maj11: { name: "major 11th", intervals: [0, 4, 7, 11, 14, 17], optional: [7, 14] },
   13: { name: "13th", intervals: [0, 4, 7, 10, 14, 21], optional: [7, 14] },
   m13: { name: "minor 13th", intervals: [0, 3, 7, 10, 14, 21], optional: [7, 14] },
-  maj13: { name: "major 13th", intervals: [0, 4, 7, 11, 14, 21], optional: [7, 14] }
+  maj13: { name: "major 13th", intervals: [0, 4, 7, 11, 14, 21], optional: [7, 14] },
+  /* "alt" names a dominant whose fifth and ninth are both altered rather than
+     any one fixed set of them. This is the spelling a player reaches for: the
+     third and seventh that make it a dominant, over a flattened ninth and
+     thirteenth. Written out, so that `alt` resolves on its own rather than
+     only as a suffix left behind after the alterations are peeled off. */
+  "7alt": { name: "altered dominant", intervals: [0, 4, 10, 13, 20], optional: [] }
 };
 
 const ALIASES = {
@@ -66,6 +72,8 @@ const ALIASES = {
   "ø": "m7b5",
   "ø7": "m7b5",
   halfdim: "m7b5",
+  alt: "7alt",
+  "7alt": "7alt",
   aug: "aug",
   "+": "aug",
   "maj#5": "aug",
