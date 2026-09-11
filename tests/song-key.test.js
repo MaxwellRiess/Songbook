@@ -197,3 +197,18 @@ test("the sequence transposes with the viewer", () => {
   assert.deepEqual(songChordSequence(null), []);
   assert.deepEqual(songChordSequence(song("")), []);
 });
+
+test("the chord's own minor comes off the suffix however it was written", () => {
+  // Case carries the third, so the minor marker is dropped and whatever else
+  // the symbol says is kept. Every marker a sheet might use has to come off:
+  // the degree now sits on every suggestion in the panel, where a numeral that
+  // reads "ivin7" or "ivmadd9" is in front of you the whole time.
+  const key = inferKey(["A", "E", "Bm", "Dm", "A", "E", "Bm", "Dm"]);
+  assert.equal(key.name, "A major");
+  for (const chord of ["Dm7", "Dmin7", "D-7"]) assert.equal(romanNumeral(chord, key), "iv7", chord);
+  assert.equal(romanNumeral("Dmadd9", key), "ivadd9");
+  assert.equal(romanNumeral("Dm13", key), "iv13");
+  // "maj" is the one suffix that keeps its m, since it is not the marker.
+  assert.equal(romanNumeral("Dmaj9", key), "IVmaj9");
+  assert.equal(romanNumeral("Dmmaj7", key), "ivmaj7");
+});

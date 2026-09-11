@@ -60,8 +60,10 @@ let collapsed = false;
    decision about one chord. */
 let bands = null;
 /* The neighbours of the chord being worked on, so the audio row can play the
-   bar as it stands without asking for them again. */
+   bar as it stands without asking for them again, and the song's key, which
+   the head line needs to name a degree whether or not the panel is open. */
 let neighbours = { prevChord: "", nextChord: "" };
+let songKey = null;
 
 const DOCK_WIDTH = 1000; // below this there is no room for a column beside the sheet
 
@@ -334,8 +336,9 @@ function open(token, { mode: wanted, sticky: hold = false, keepPanel: forcePanel
   voicings = parsed ? lookup(symbol) : [];
   index = Math.min(CHOSEN.get(symbol) || 0, Math.max(voicings.length - 1, 0));
 
+  songKey = callbacks.getContext?.(token)?.key || null;
   ui.name.textContent = symbol;
-  ui.quality.textContent = parsed ? `${parsed.qualityName} · ${parsed.notes.join(" ")}` : "unrecognised chord";
+  ui.quality.textContent = headDetail(parsed);
   sticky = hold;
   applyMode(wanted);
   ui.root.hidden = false;
@@ -350,6 +353,20 @@ function open(token, { mode: wanted, sticky: hold = false, keepPanel: forcePanel
     renderReharmonization();
   }
   reposition();
+}
+
+/* What the chord is, and where it sits. The degree is the part worth having in
+   the small hover window too: reading a numeral against a chord name, over and
+   over, is how the relationship between the two stops needing to be worked
+   out. It is only stated where the key was inferred confidently, since a
+   numeral stated plainly and wrongly is worse than none. */
+function headDetail(parsed) {
+  if (!parsed) return "unrecognised chord";
+  const numeral = songKey?.confident ? romanNumeral(parsed.symbol, songKey) : "";
+  return [
+    `${parsed.qualityName} \u00b7 ${parsed.notes.join(" ")}`,
+    numeral && `${numeral} in ${songKey.name}`
+  ].filter(Boolean).join(" \u00b7 ");
 }
 
 function lookup(name) {
@@ -487,14 +504,15 @@ function renderReharmonization() {
   /* Reads as the run of chords it sits in, then what the chord is doing there
      when the key is known well enough to say. Kept up while collapsed, since
      it is the one line that says where you are. */
-  const run = [context.prevChord, original, context.nextChord].filter(Boolean).join(" \u2192 ");
   const numeral = context.key?.confident ? romanNumeral(original, context.key) : "";
   const shape = describeProgression({ ...context, symbol: original });
-  ui.root.querySelector(".reharm-context").textContent = [
-    run,
-    numeral && `${numeral} in ${context.key.name}`,
-    shape?.label
-  ].filter(Boolean).join(" \u00b7 ");
+  renderContextLine({
+    prevChord: context.prevChord,
+    original,
+    nextChord: context.nextChord,
+    place: numeral && `${numeral} in ${context.key.name}`,
+    shape: shape?.label
+  });
 
   if (!reharmonizing) {
     selectedAlternative = null;
@@ -520,10 +538,18 @@ function renderReharmonization() {
     const rub = candidate.transitionNote && candidate.rubs ? ", rubs against a neighbouring chord" : "";
     button.classList.toggle("has-rub", Boolean(candidate.rubs));
     button.title = `${candidate.flavor} \u00b7 ${candidate.strengthNote}${candidate.transitionNote ? `\n${candidate.transitionNote}` : ""}`;
-    button.setAttribute("aria-label", `${candidate.symbol}, ${candidate.flavor}, ${candidate.strengthNote}${rub}`);
+    /* The degree sits on the row rather than only in the detail below it, so
+       that reading down the list pairs each chord with its numeral over and
+       over. That pairing is the thing worth building an ear for, and it cannot
+       be built one selected row at a time. */
+    const degreeSaid = candidate.numeral ? `, ${candidate.numeral}` : "";
+    button.setAttribute("aria-label", `${candidate.symbol}${degreeSaid}, ${candidate.flavor}, ${candidate.strengthNote}${rub}`);
     const name = document.createElement("strong"); name.textContent = candidate.symbol;
     const flavor = document.createElement("span"); flavor.textContent = candidate.flavor;
-    button.append(name, flavor);
+    const degree = document.createElement("span");
+    degree.className = "reharm-degree";
+    degree.textContent = candidate.numeral;
+    button.append(name, flavor, degree);
     button.addEventListener("click", () => {
       stopChordAudio();
       selectedAlternative = candidate;
@@ -555,6 +581,53 @@ function renderReharmonization() {
   ui.root.querySelector(".reharm-status").textContent = "";
   renderApproaches(context);
   showAlternative(anchor.dataset.chord);
+}
+
+/* The run of chords, with the one being worked on picked out of it. Three
+   chord names in a row say nothing about which of them is the subject, and the
+   middle is only the middle while there is a chord on either side of it: at the
+   start or end of a section there are two names and no way to tell them apart.
+   So the chord is marked rather than positioned. */
+function renderContextLine({ prevChord, original, nextChord, place, shape }) {
+  const holder = ui.root.querySelector(".reharm-context");
+  holder.replaceChildren();
+
+  const run = document.createElement("span");
+  run.className = "reharm-run";
+  const steps = [prevChord, original, nextChord].filter(Boolean);
+  steps.forEach((chord, at) => {
+    if (at) {
+      const arrow = document.createElement("span");
+      arrow.className = "reharm-run-arrow";
+      arrow.textContent = "\u2192";
+      // Punctuation between the names, and nothing a reader needs said aloud.
+      arrow.setAttribute("aria-hidden", "true");
+      run.append(arrow);
+    }
+    const name = document.createElement("span");
+    name.className = "reharm-run-chord";
+    name.textContent = chord;
+    if (chord === original && at === steps.indexOf(original)) {
+      name.classList.add("is-here");
+      name.setAttribute("aria-current", "true");
+      const said = document.createElement("span");
+      said.className = "sr-only";
+      said.textContent = " (the chord you are changing)";
+      name.append(said);
+    }
+    run.append(name);
+  });
+  holder.append(run);
+
+  for (const text of [place, shape].filter(Boolean)) {
+    const sep = document.createElement("span");
+    sep.className = "reharm-run-sep";
+    sep.textContent = "\u00b7";
+    sep.setAttribute("aria-hidden", "true");
+    const part = document.createElement("span");
+    part.textContent = text;
+    holder.append(sep, part);
+  }
 }
 
 /* Where the list is capped it has to say so. A scrollbar that only appears
@@ -678,7 +751,7 @@ function showAlternative(name) {
   voicings = parsed ? lookup(symbol) : [];
   index = Math.min(CHOSEN.get(symbol) || 0, Math.max(0, voicings.length-1));
   ui.name.textContent = symbol;
-  ui.quality.textContent = parsed ? `${parsed.qualityName} · ${parsed.notes.join(" ")}` : "unrecognised chord";
+  ui.quality.textContent = headDetail(parsed);
   render();
   /* The lower half of the middle column is whatever has been picked for this
      chord. Until something is, there is nothing to hear there that the button
