@@ -1778,13 +1778,35 @@ textarea {
 .chord-popover.is-reharmonizing:not(.is-docked) { width: min(400px, calc(100vw - 20px)); }
 .chord-popover:not(.is-docked) { max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; }
 .chord-popover.is-reharmonizing .chord-diagram { max-width: 152px; }
+/* Standing the suggestions down is a request to see the shape, so the panel
+   gives the whole of its width to one. The cap is what keeps a docked column
+   from drawing a fretboard taller than the window. */
+.chord-popover.is-docked:not(.is-reharmonizing) .chord-diagram,
+.chord-popover.is-sheet:not(.is-reharmonizing) .chord-diagram { max-width: min(100%, 260px); }
+.chord-popover.is-docked:not(.is-reharmonizing) .chord-popover-body,
+.chord-popover.is-sheet:not(.is-reharmonizing) .chord-popover-body { gap: 8px; }
 .chord-popover.is-docked .chord-popover-close,
 .chord-popover.is-sheet .chord-popover-close { display: block; min-width: 30px; min-height: 30px; }
+/* Only the small window carries this. Inside the panel the suggestions are
+   the point, and the collapse in the bar is what stands them down. */
 .chord-popover .reharm-toggle { width: 100%; min-height: 38px; margin-top: 12px; }
-.chord-popover .reharm-toggle[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent); }
+.chord-popover .reharm-toggle[hidden] { display: none; }
 .reharm-panel { margin-top: 12px; }
 .reharm-panel[hidden], .reharm-draft[hidden], .reharm-reset[hidden] { display: none; }
-.reharm-context { font-size: 13px; font-weight: 650; margin-bottom: 7px; }
+/* Collapsing leaves the one line that says where in the song you are, and the
+   way back. Everything else goes, so the shape below has the panel to itself. */
+.reharm-panel.is-collapsed .reharm-body { display: none; }
+.reharm-bar { display: flex; align-items: baseline; gap: 10px; margin-bottom: 7px; }
+.reharm-context { font-size: 13px; font-weight: 650; flex: 1; min-width: 0; }
+.chord-popover .reharm-collapse { flex: none; padding: 3px 9px; font-size: 11px; min-height: 26px; border-radius: 7px; color: var(--muted); }
+
+/* One chip per band, so the list can be cut to the bold end without scrolling
+   for it. They wrap rather than scroll sideways, since a chip half off the
+   edge reads as the end of the row. */
+.reharm-filters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.reharm-filters:empty { display: none; }
+.chord-popover .reharm-filter { padding: 3px 9px; font-size: 11px; min-height: 28px; border-radius: 999px; color: var(--muted); }
+.chord-popover .reharm-filter[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent-strong); border-color: var(--accent); font-weight: 650; }
 .reharm-detail { font-size: 12px; line-height: 1.5; color: var(--muted); }
 /* One row per alternative. Most of the list is legible at once, and the audio
    and apply controls below stay in reach instead of being scrolled past. */
@@ -1792,6 +1814,11 @@ textarea {
 /* A full-height column scrolls as one thing, so the list does not need a cap
    or a scrollbar of its own. */
 .chord-popover.is-docked .reharm-options { max-height: none; overflow-y: visible; }
+/* Only where the cap is in force and there is something under it. */
+.reharm-options.has-more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
+}
 .chord-popover .reharm-option { display: grid; grid-template-columns: minmax(50px, auto) 1fr; align-items: baseline; text-align: left; gap: 4px 10px; padding: 7px 10px; border-radius: 9px; min-height: 0; }
 .reharm-option strong { color: var(--accent-strong); font-size: 15px; }
 .reharm-option span { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
@@ -1821,8 +1848,17 @@ textarea {
 .chord-popover .reharm-option[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
 .chord-popover .reharm-option[aria-pressed="true"] strong { color: var(--accent-strong); }
 .reharm-detail:not(:empty) { min-height: 36px; }
-.reharm-audio { display: flex; gap: 8px; margin: 12px 0 6px; }
-.reharm-audio button { flex: 1; min-width: 0; padding: 6px 8px; font-size: 12px; min-height: 40px; }
+/* The chord in place, laid out as it sits in the bar: what came before on the
+   left, what follows on the right, and the middle holding the chord as written
+   over whatever has been picked for it. The columns are named underneath
+   rather than on the buttons, which carry the chord names instead. */
+.reharm-audio { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 6px; margin: 12px 0 6px; align-items: end; }
+.reharm-audio-col { display: grid; gap: 4px; min-width: 0; }
+.chord-popover .reharm-audio button { width: 100%; min-width: 0; padding: 6px 4px; font-size: 12px; min-height: 38px; overflow-wrap: anywhere; }
+/* The chord as written is the reference the other three are heard against. */
+.chord-popover .reharm-hear-original { border-color: var(--accent-firm); }
+.chord-popover .reharm-hear[disabled], .chord-popover .reharm-audio button[disabled] { color: var(--muted); }
+.reharm-audio-label { font-size: 10px; line-height: 1.3; color: var(--muted); text-align: center; text-transform: lowercase; letter-spacing: .04em; }
 .reharm-audio-note, .reharm-session { font-size: 11px; line-height: 1.4; color: var(--muted); }
 .chord-popover .reharm-apply { width: 100%; margin: 12px 0 6px; background: var(--accent-soft); color: var(--accent-strong); }
 .chord-popover .reharm-reset { width: 100%; margin: 0 0 8px; }

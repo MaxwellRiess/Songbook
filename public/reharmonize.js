@@ -167,6 +167,96 @@ const REACH_WORDS_WITHOUT_KEY = {
   4: 'changes where the progression goes'
 };
 
+/* The same four bands in a word or two, for the filter chips. A row has room
+   to say what it is; a chip has room only to be picked out of four. */
+const REACH_CHIPS = {
+  1: 'Colour',
+  2: 'In key',
+  3: 'Outside',
+  4: 'Redirect'
+};
+const REACH_CHIPS_WITHOUT_KEY = {
+  1: 'Colour',
+  2: 'Same root',
+  3: 'New root',
+  4: 'Redirect'
+};
+
+/* `keyed` says whether the suggestions were measured against a confident key,
+   which is what the middle two bands mean something different about. */
+export function reachChip(strength, keyed) {
+  return (keyed ? REACH_CHIPS : REACH_CHIPS_WITHOUT_KEY)[strength] || '';
+}
+
+/* Suggestions that come from the shape the chord sits in rather than from the
+   chord or its degree.
+
+   `describeProgression` already recognises a chord repeated, a two-five-one, a
+   dominant sidestepping to the sixth degree, and a dominant of whatever
+   follows. Until now all of that only ever changed the wording of one
+   sentence. Each shape asks for something different, and these are the things
+   a player reaches for in each.
+
+   A repeated chord is the clearest case. It is asking for movement, and the
+   cheapest movement is under a chord that does not change at all, so the same
+   chord over its own third or fifth comes first. */
+function progressionSuggestions(add, { original, shape, next, nextChord }) {
+  if (!shape) return;
+
+  /* The diminished a semitone below a chord leans up into it, with no root of
+     its own to commit to. It earns its place wherever the next chord is the
+     point of the bar, which is what these shapes have in common. */
+  const leadingDiminished = (target, why) => {
+    if (!target) return;
+    const name = `${spellNote(target.rootPc + 11, false)}dim7`;
+    add(name, `Lean into ${target.symbol}`, `${name} sits a semitone under ${target.symbol} and leans up into it. ${why}`, 'redirect');
+  };
+
+  if (shape.repeated) {
+    /* Only from root position. A chord already written over a bass note has
+       had this decision made for it, and stacking a second slash on top of the
+       first would not say anything. */
+    if (original.bassPc === null) {
+      const bare = original.symbol.split('/')[0];
+      for (const [steps, degree] of [[[3, 4], 'third'], [[7], 'fifth']]) {
+        const interval = steps.find(step => original.intervals.includes(step));
+        if (interval === undefined) continue;
+        const bass = noteName(original, (original.rootPc + interval) % 12);
+        if (!bass) continue;
+        add(`${bare}/${bass}`, `Over its ${degree}`,
+          `The same chord with ${bass} underneath, so the bass moves while the harmony holds. The cheapest answer to a chord played twice.`);
+      }
+    }
+    /* The other answer to a static chord is an inner voice that walks while
+       the rest holds. The chord itself is in the list already; what the repeat
+       adds is the reason for reaching for it. */
+    const third = original.intervals.includes(3) ? 'm' : original.intervals.includes(4) ? '' : null;
+    if (third !== null) {
+      const name = `${original.root}${third === 'm' ? 'mmaj7' : 'maj7'}`;
+      add(name, 'Line cliché', `Raises the seventh over a root that stays put, the step a descending inner line takes on a chord held for two bars. ${original.symbol} → ${name} → ${original.root}${third}7.`, 'shade');
+    }
+    leadingDiminished(next, 'On a chord played twice, the second one can lean out of the bar instead of sitting in it.');
+  }
+
+  if (shape.twoFiveOne) {
+    leadingDiminished(next, 'The dominant without its root, which is the same tension arriving on a different bass.');
+  }
+
+  if (shape.deceptive) {
+    leadingDiminished(next, 'It leans into the sixth degree rather than declining to land on the tonic, so the sidestep is heard as an arrival.');
+  }
+
+  /* A dominant of whatever follows can be stepped through instead of arrived
+     on. Only one chord fits where one chord was, so this is the second degree
+     of the target standing in its place: the arrival is softened rather than
+     set up harder. */
+  if (shape.secondaryDominant && next) {
+    const minorTarget = next.intervals.includes(3);
+    const name = `${spellNote(next.rootPc + 2, next.useFlats)}${minorTarget ? 'm7b5' : 'm7'}`;
+    add(name, `Delay ${next.symbol}`, `The second degree of ${next.symbol}, where its dominant was. The bar leans toward ${nextChord} without announcing it, which leaves the arrival softer.`, 'substitute');
+  }
+}
+
 const ORDINALS = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh'];
 const ordinal = degree => ORDINALS[degree - 1] || `${degree}th`;
 
@@ -306,10 +396,12 @@ export function suggestReharmonizations(symbol, { prevChord = '', nextChord = ''
     });
   }
 
-  /* Function first, so that where a suggestion can be reached both ways it
-     arrives with the explanation that knows the key. The parallel minor of a
-     major chord and the fourth degree borrowed from the parallel mode are the
-     same chord; only one of them can say why it is that chord. */
+  /* Most specific first, so that where a suggestion can be reached more than
+     one way it arrives with the explanation that knows the most. The parallel
+     minor of a major chord and the fourth degree borrowed from the parallel
+     mode are the same chord; only one of them can say why it is that chord. */
+  const shape = describeProgression({ prevChord, symbol: original.symbol, nextChord, key });
+  progressionSuggestions(add, { original, shape, next, nextChord });
   functionalSuggestions(add, { original, inKey, degree, next });
 
   if (dominant) {
@@ -321,12 +413,12 @@ export function suggestReharmonizations(symbol, { prevChord = '', nextChord = ''
     add(`${root}13#11`, 'Bright tension', 'A raised fourth and thirteenth give the dominant a floating edge.', 'tension');
     add(`${root}7#5`, 'Whole-tone lift', 'Raises the fifth, so the chord loses its footing and leans harder on wherever it goes.', 'tension');
     add(`${root}7b13`, 'Altered / brooding', 'A flattened thirteenth over the dominant, the darkest of the ordinary alterations.', 'tension');
+    add(`${root}7alt`, 'Altered, all of it', 'Flattened ninth and thirteenth together over the third and seventh. Everything that can be bent, bent.', 'tension');
     add(`${root}m7`, 'Minor turn', 'Lowers the third, changing the dominant function as well as its color.', 'shade');
     const targetName = next && (next.rootPc-original.rootPc+12)%12 === 5 ? next.symbol : spellNote(original.rootPc+5, true);
     /* Inside a ii-V-I the substitute's point is the bass walking down by
        semitones, which is why players reach for it there. Saying so needs the
        chord before as well as the one after. */
-    const shape = describeProgression({ prevChord, symbol, nextChord, key });
     const previous = parseChordSymbol(prevChord);
     /* Inside a ii-V-I the bass walk says everything the generic line about
        resolving down a semitone says, and says it about this song, so it
@@ -340,11 +432,18 @@ export function suggestReharmonizations(symbol, { prevChord = '', nextChord = ''
     add(`${root}dim7`, 'Symmetric tension', 'A fully diminished seventh adds tightly spaced tension.', 'shade');
     add(`${root}m7`, 'Soften the fifth', 'Raises the diminished fifth for a more settled minor sound.', 'shade');
     add(`${root}m9`, 'Open minor', 'Raises the fifth and adds a ninth; changes the original function.', 'shade');
+    /* A diminished seventh is a dominant seventh flat ninth without its root,
+       so the dominant a major third below it is the chord it was standing in
+       for all along. Putting the root back states it outright. */
+    add(`${spellNote(original.rootPc + 8, true)}7b9`, 'Give it a root',
+      `${spellNote(original.rootPc + 8, true)}7b9 is this chord with a root underneath it. The tension is the same; the bass names where it is going.`, 'redirect');
   } else if (minor) {
     add(`${root}m7`, 'Soft / intimate', 'Adds a minor seventh while keeping the minor triad.');
     add(`${root}m9`, 'Deep / mellow', 'Adds seventh and ninth colors around the minor third.');
     add(`${root}m11`, 'Spacious', 'Adds a fourth above the octave to the minor ninth color.');
     add(`${root}m6`, 'Bittersweet', 'The natural sixth gives minor a lighter, unsettled warmth.');
+    add(`${root}m13`, 'Wide minor', 'A natural thirteenth over the minor seventh, the sixth kept up where it does not crowd the third.');
+    add(`${root}madd9`, 'Bare / ringing', 'A ninth over the minor triad with no seventh under it, so the chord stays open.');
     add(`${root}m7b5`, 'Hollowed out', 'Drops the fifth a semitone, taking the floor out from under the minor chord.', 'shade');
     add(root, 'Major instead', 'Raises the minor third for a sudden lift. Check it against the melody.', 'shade');
     add(`${root}maj9`, 'Luminous major', 'Changes to major and adds a major seventh and ninth.', 'shade');
@@ -360,6 +459,9 @@ export function suggestReharmonizations(symbol, { prevChord = '', nextChord = ''
     add(`${root}maj7`, 'Warm / wistful', 'Adds a major seventh close to the root.');
     add(`${root}maj9`, 'Lush', 'Layers a ninth over the major-seventh color.');
     add(`${root}69`, 'Easy / rounded', 'Adds sixth and ninth colors without a leading-tone seventh.');
+    add(`${root}6`, 'Plain sixth', 'A sixth and nothing else, which settles where a major seventh would lean.');
+    add(`${root}maj13`, 'Full major', 'A thirteenth stacked over the major ninth, about as wide as the chord goes.');
+    add(`${root}sus2`, 'Open second', 'A second in place of the third, thinner than the fourth and less impatient.', 'shade');
     add(`${root}maj9#11`, 'Floating', 'A raised fourth adds a luminous edge to the major ninth.', 'tension');
     add(`${root}sus4`, 'Held back', 'A fourth in place of the third, so the chord states no third at all until it moves.', 'shade');
     add(`${root}aug`, 'Raised fifth', 'Raises the fifth a semitone. Nothing sits still on it, which is the point.', 'shade');
@@ -384,6 +486,7 @@ export function suggestReharmonizations(symbol, { prevChord = '', nextChord = ''
     add(`${root}m9`, 'Soft minor', 'Introduces a minor third, seventh and ninth.', 'shade');
     add(`${root}sus2`, 'Airy', 'An open second replaces the third.');
     add(`${root}sus4`, 'Suspended', 'A fourth replaces the third.');
+    add(`${root}7`, 'Bluesy third', 'Commits to a major third and a flat seventh, which a chord stating no third leaves open.', 'shade');
   }
   if (next) {
     const leadRoot = spellNote(next.rootPc+7, next.useFlats);
@@ -398,7 +501,6 @@ export function suggestReharmonizations(symbol, { prevChord = '', nextChord = ''
     }
   }
 
-  const shape = describeProgression({ prevChord, symbol: original.symbol, nextChord, key });
   const wasInto = prevChord ? transition(prevChord, original.symbol) : null;
   const wasOutOf = nextChord ? transition(original.symbol, nextChord) : null;
   for (const candidate of suggestions) {

@@ -23,7 +23,7 @@
 
 import { getVoicings, parseChordSymbol } from "./chord-voicings.js";
 import { createChordDiagram, positionLabel } from "./chord-diagram.js";
-import { describeProgression, suggestReharmonizations } from "./reharmonize.js";
+import { describeProgression, reachChip, suggestReharmonizations } from "./reharmonize.js";
 import { romanNumeral } from "./song-key.js";
 import { playChordSequence, playChordVoicing, stopChordAudio } from "./chord-audio.js";
 import { suggestApproaches } from "./approach.js";
@@ -50,6 +50,18 @@ let callbacks = {};
 let reharmonizing = false;
 let selectedAlternative = null;
 let sheetRoot = null;
+/* The panel opens showing its suggestions, so this is the user saying they
+   want the shapes on their own for a while. It outlives the chord being looked
+   at, because collapsing it once and having it spring back on the next chord
+   would not be a preference at all. */
+let collapsed = false;
+/* Which bands the list is showing, or null for all of them. Also kept across
+   chords: narrowing to the bold end is a way of reading the whole song, not a
+   decision about one chord. */
+let bands = null;
+/* The neighbours of the chord being worked on, so the audio row can play the
+   bar as it stands without asking for them again. */
+let neighbours = { prevChord: "", nextChord: "" };
 
 const DOCK_WIDTH = 1000; // below this there is no room for a column beside the sheet
 
@@ -198,14 +210,30 @@ function ensureUi() {
     </div>
     <button type="button" class="reharm-toggle" aria-pressed="false" aria-expanded="false" aria-controls="reharmPanel">Re-harmonize</button>
     <section id="reharmPanel" class="reharm-panel" hidden>
-      <p class="reharm-context"></p>
-      <div class="reharm-options" role="group" aria-label="Alternative chords"></div>
-      <div class="reharm-detail" aria-live="polite"></div>
-      <div class="reharm-audio">
-        <button type="button" class="reharm-hear-original">Hear original</button>
-        <button type="button" class="reharm-hear">Hear choice</button>
+      <div class="reharm-bar">
+        <p class="reharm-context"></p>
+        <button type="button" class="reharm-collapse" aria-expanded="true" aria-controls="reharmBody">Hide</button>
       </div>
-      <p class="reharm-audio-note">Synthesized standard-tuning voicing, without capo.</p>
+      <div id="reharmBody" class="reharm-body">
+        <div class="reharm-filters" role="group" aria-label="Show only suggestions that reach this far"></div>
+        <div class="reharm-options" role="group" aria-label="Alternative chords"></div>
+        <div class="reharm-detail" aria-live="polite"></div>
+        <div class="reharm-audio" role="group" aria-label="Hear the chord where it sits">
+          <div class="reharm-audio-col">
+            <button type="button" class="reharm-hear-prev"></button>
+            <span class="reharm-audio-label">previous</span>
+          </div>
+          <div class="reharm-audio-col is-middle">
+            <button type="button" class="reharm-hear-original"></button>
+            <button type="button" class="reharm-hear"></button>
+            <span class="reharm-audio-label">current</span>
+          </div>
+          <div class="reharm-audio-col">
+            <button type="button" class="reharm-hear-next"></button>
+            <span class="reharm-audio-label">next</span>
+          </div>
+        </div>
+        <p class="reharm-audio-note">Synthesized standard-tuning voicing, without capo.</p>
       <button type="button" class="reharm-apply" disabled>Use this chord</button>
       <button type="button" class="reharm-reset" hidden>Restore original chord</button>
       <details class="approach-panel">
@@ -214,8 +242,9 @@ function ensureUi() {
         <div class="approach-options" role="group" aria-label="Approach chords"></div>
         <p class="approach-detail" aria-live="polite"></p>
       </details>
-      <p class="reharm-session">Changes are a draft. Copy or save a new version to keep them.</p>
-      <p class="reharm-status" role="status"></p>
+        <p class="reharm-session">Changes are a draft. Copy or save a new version to keep them.</p>
+        <p class="reharm-status" role="status"></p>
+      </div>
     </section>
   `;
 
@@ -247,18 +276,27 @@ function ensureUi() {
   });
   ui.prev.addEventListener("click", () => step(-1));
   ui.next.addEventListener("click", () => step(1));
+  /* Only the small window carries this, where it is the way into the panel
+     rather than a toggle. Inside the panel the suggestions are the point, and
+     the small collapse below is what stands them down. */
   root.querySelector(".reharm-toggle").addEventListener("click", () => {
     clearTimeout(hideTimer);
-    if (mode === "floating") {
-      // From the small window this is the way in, not a toggle.
-      applyMode(persistentMode());
-      reharmonizing = true;
-    } else {
-      reharmonizing = !reharmonizing;
-    }
+    applyMode(persistentMode());
+    collapsed = false;
+    reharmonizing = true;
     renderReharmonization();
     reposition();
   });
+  root.querySelector(".reharm-collapse").addEventListener("click", () => {
+    collapsed = !collapsed;
+    reharmonizing = !collapsed;
+    renderReharmonization();
+    reposition();
+  });
+  root.querySelector(".reharm-hear-prev").addEventListener("click", () =>
+    hear(neighbours.prevChord, lookup(neighbours.prevChord)[0]));
+  root.querySelector(".reharm-hear-next").addEventListener("click", () =>
+    hear(neighbours.nextChord, lookup(neighbours.nextChord)[0]));
   root.querySelector(".reharm-hear").addEventListener("click", () => hear(symbol, voicings[index]));
   root.querySelector(".reharm-hear-original").addEventListener("click", () => {
     const original = anchor.dataset.originalChord || anchor.dataset.chord;
@@ -282,11 +320,11 @@ function open(token, { mode: wanted, sticky: hold = false, keepPanel: forcePanel
   const parsed = parseChordSymbol(next);
 
   ensureUi();
-  /* Selecting another chord while the panel is open keeps the reharmonize
-     section showing, so the same comparison carries across chords. A hover
-     preview never carries it, since it does not show the section at all. */
+  /* The panel is the reharmonize view: opening it on any chord shows the
+     suggestions, and only an explicit collapse holds them back. A hover
+     preview never shows them at all, since it is a different job. */
   const keepPanel = forcePanel === undefined
-    ? wanted !== "floating" && isOpenPanel() && reharmonizing
+    ? wanted !== "floating" && !collapsed
     : forcePanel;
   anchor?.classList.remove("chord-token-active");
   anchor = token;
@@ -308,8 +346,6 @@ function open(token, { mode: wanted, sticky: hold = false, keepPanel: forcePanel
      work is done for it. */
   if (mode === "floating") {
     ui.root.querySelector(".reharm-panel").hidden = true;
-    ui.root.querySelector(".reharm-toggle").textContent = "Re-harmonize";
-    ui.root.querySelector(".reharm-toggle").setAttribute("aria-expanded", "false");
   } else {
     renderReharmonization();
   }
@@ -430,32 +466,49 @@ function reposition() {
 }
 
 function renderReharmonization() {
-  const toggle = ui.root.querySelector(".reharm-toggle");
-  toggle.setAttribute("aria-pressed", String(reharmonizing));
-  toggle.setAttribute("aria-expanded", String(reharmonizing));
-  ui.root.querySelector(".reharm-panel").hidden = !reharmonizing;
+  const panel = ui.root.querySelector(".reharm-panel");
+  const collapse = ui.root.querySelector(".reharm-collapse");
+  /* The small window shows only a shape and a way in; the panel always shows
+     the suggestions unless they have been stood down. */
+  panel.hidden = mode === "floating";
+  ui.root.querySelector(".reharm-toggle").hidden = mode !== "floating";
   ui.root.classList.toggle("is-reharmonizing", reharmonizing);
-  if (!reharmonizing) {
-    selectedAlternative = null;
-    showAlternative(anchor.dataset.chord);
-    return;
-  }
+  panel.classList.toggle("is-collapsed", !reharmonizing);
+  collapse.textContent = reharmonizing ? "Hide" : "Show";
+  collapse.setAttribute("aria-expanded", String(reharmonizing));
+  collapse.setAttribute("aria-label", reharmonizing
+    ? "Hide the suggestions and show the chord shape larger"
+    : "Show the suggestions");
+
   const original = anchor.dataset.originalChord || anchor.dataset.chord;
   const context = callbacks.getContext?.(anchor) || {};
-  const options = suggestReharmonizations(original, context);
+  neighbours = { prevChord: context.prevChord || "", nextChord: context.nextChord || "" };
+
   /* Reads as the run of chords it sits in, then what the chord is doing there
-     when the key is known well enough to say. */
-  const run = [context.prevChord, original, context.nextChord].filter(Boolean).join(" → ");
+     when the key is known well enough to say. Kept up while collapsed, since
+     it is the one line that says where you are. */
+  const run = [context.prevChord, original, context.nextChord].filter(Boolean).join(" \u2192 ");
   const numeral = context.key?.confident ? romanNumeral(original, context.key) : "";
   const shape = describeProgression({ ...context, symbol: original });
   ui.root.querySelector(".reharm-context").textContent = [
     run,
     numeral && `${numeral} in ${context.key.name}`,
     shape?.label
-  ].filter(Boolean).join(" · ");
+  ].filter(Boolean).join(" \u00b7 ");
+
+  if (!reharmonizing) {
+    selectedAlternative = null;
+    showAlternative(anchor.dataset.chord);
+    return;
+  }
+
+  const options = suggestReharmonizations(original, context);
+  renderBandFilters(options);
+  const showing = options.filter(candidate => !bands || bands.has(candidate.strength));
+
   const list = ui.root.querySelector(".reharm-options");
   list.replaceChildren();
-  for (const candidate of options) {
+  for (const candidate of showing) {
     const button = document.createElement("button");
     button.type = "button"; button.className = "reharm-option";
     button.setAttribute("aria-pressed", "false");
@@ -466,7 +519,7 @@ function renderReharmonization() {
     button.dataset.strength = String(candidate.strength);
     const rub = candidate.transitionNote && candidate.rubs ? ", rubs against a neighbouring chord" : "";
     button.classList.toggle("has-rub", Boolean(candidate.rubs));
-    button.title = `${candidate.flavor} · ${candidate.strengthNote}${candidate.transitionNote ? `\n${candidate.transitionNote}` : ""}`;
+    button.title = `${candidate.flavor} \u00b7 ${candidate.strengthNote}${candidate.transitionNote ? `\n${candidate.transitionNote}` : ""}`;
     button.setAttribute("aria-label", `${candidate.symbol}, ${candidate.flavor}, ${candidate.strengthNote}${rub}`);
     const name = document.createElement("strong"); name.textContent = candidate.symbol;
     const flavor = document.createElement("span"); flavor.textContent = candidate.flavor;
@@ -491,15 +544,90 @@ function renderReharmonization() {
     });
     list.append(button);
   }
-  ui.root.querySelector(".reharm-detail").textContent = options.length ? "" : "No alternatives found for this chord symbol.";
+  markScrollable(list);
+  ui.root.querySelector(".reharm-detail").textContent = options.length
+    ? (showing.length ? "" : "Nothing in the bands you have picked. Widen them to see the rest.")
+    : "No alternatives found for this chord symbol.";
   ui.root.querySelector(".reharm-apply").disabled = true;
   ui.root.querySelector(".reharm-reset").hidden = !callbacks.onReplace || !anchor.classList.contains("is-reharmonized");
-  ui.root.querySelector(".reharm-hear-original").textContent = `Hear original ${original}`;
-  ui.root.querySelector(".reharm-hear-original").disabled = !lookup(original).length;
+  renderAudioRow(original);
   ui.root.querySelector(".reharm-session").textContent = callbacks.onReplace ? "Drafts last until reload. Copy or save a new version to keep them." : "Explore colors here; use the main app to replace chords.";
   ui.root.querySelector(".reharm-status").textContent = "";
   renderApproaches(context);
   showAlternative(anchor.dataset.chord);
+}
+
+/* Where the list is capped it has to say so. A scrollbar that only appears
+   once you are already scrolling is no help to someone deciding whether there
+   is anything below, and the row cut in half at the bottom edge is too quiet
+   to read as an invitation. A fade over the last of the list says it, and goes
+   once there is nothing left under it. */
+function markScrollable(list) {
+  const update = () => {
+    const more = list.scrollHeight - list.clientHeight - list.scrollTop > 1;
+    list.classList.toggle("has-more", more);
+  };
+  if (!list.dataset.watched) {
+    list.addEventListener("scroll", update, { passive: true });
+    list.dataset.watched = "yes";
+  }
+  requestAnimationFrame(update);
+}
+
+/* One chip per band the list actually has something in, plus an All. Clicking
+   a band while everything is showing narrows to that band alone, which is the
+   move being reached for on a phone; after that the chips toggle, so two bands
+   can be read together. Turning the last one off means all again rather than
+   an empty list, because an empty list is never what was wanted. */
+function renderBandFilters(options) {
+  const holder = ui.root.querySelector(".reharm-filters");
+  holder.replaceChildren();
+  const counts = new Map();
+  for (const candidate of options) counts.set(candidate.strength, (counts.get(candidate.strength) || 0) + 1);
+  const present = [...counts.keys()].sort((one, other) => one - other);
+  /* One band is not a choice, and no bands is not a list. */
+  if (present.length < 2) return;
+  const keyed = options.some(candidate => candidate.diatonic !== null);
+
+  const chip = (label, pressed, detail, onPick) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "reharm-filter";
+    button.textContent = label;
+    button.setAttribute("aria-pressed", String(pressed));
+    button.setAttribute("aria-label", detail);
+    button.addEventListener("click", () => { onPick(); renderReharmonization(); reposition(); });
+    holder.append(button);
+  };
+
+  chip("All", !bands, `Show all ${options.length} suggestions`, () => { bands = null; });
+  for (const band of present) {
+    const label = reachChip(band, keyed);
+    chip(`${label} ${counts.get(band)}`, Boolean(bands?.has(band)),
+      `${counts.get(band)} suggestions: ${label.toLowerCase()}`,
+      () => {
+        if (!bands) { bands = new Set([band]); return; }
+        bands.has(band) ? bands.delete(band) : bands.add(band);
+        if (!bands.size) bands = null;
+      });
+  }
+}
+
+/* The chord in place: what came before it, the chord itself against whatever
+   has been picked for it, and what follows. Hearing a suggestion on its own
+   says how it sounds; hearing it between its neighbours says whether it works.
+   A missing neighbour keeps its column so the middle stays where it was. */
+function renderAudioRow(original) {
+  const set = (selector, name, describe) => {
+    const button = ui.root.querySelector(selector);
+    const playable = name ? lookup(name).length : 0;
+    button.textContent = name || "\u2014";
+    button.disabled = !playable;
+    button.setAttribute("aria-label", playable ? describe(name) : "No chord here");
+  };
+  set(".reharm-hear-prev", neighbours.prevChord, name => `Hear ${name}, the chord before this one`);
+  set(".reharm-hear-original", original, name => `Hear ${name}, the chord as written`);
+  set(".reharm-hear-next", neighbours.nextChord, name => `Hear ${name}, the chord after this one`);
 }
 
 /* Ways into the chord, for reading and hearing rather than for applying. The
@@ -552,8 +680,15 @@ function showAlternative(name) {
   ui.name.textContent = symbol;
   ui.quality.textContent = parsed ? `${parsed.qualityName} · ${parsed.notes.join(" ")}` : "unrecognised chord";
   render();
-  ui.root.querySelector(".reharm-hear").textContent = `Hear ${symbol}`;
-  ui.root.querySelector(".reharm-hear").disabled = !voicings.length;
+  /* The lower half of the middle column is whatever has been picked for this
+     chord. Until something is, there is nothing to hear there that the button
+     above it does not already play, so it says so with a dash. */
+  const original = anchor ? (anchor.dataset.originalChord || anchor.dataset.chord) : "";
+  const picked = symbol && symbol !== original;
+  const hear = ui.root.querySelector(".reharm-hear");
+  hear.textContent = picked ? symbol : "\u2014";
+  hear.disabled = !picked || !voicings.length;
+  hear.setAttribute("aria-label", picked ? `Hear ${symbol}, the chord you have picked` : "No chord picked yet");
 }
 
 async function hear(name, voicing) {

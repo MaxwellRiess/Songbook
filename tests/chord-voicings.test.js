@@ -161,3 +161,19 @@ test("names the notes under each string", () => {
 test("returns nothing for an unparseable symbol", () => {
   assert.deepEqual(getVoicings("Nope"), []);
 });
+
+test("an altered dominant resolves from the word alone", () => {
+  // "alt" names a dominant whose fifth and ninth are both bent rather than any
+  // one fixed set of them, so it has to be spelled out rather than left for
+  // the alteration-peeling to find, which needs an alteration to start from.
+  const altered = parseChordSymbol("C7alt");
+  assert.ok(altered);
+  assert.equal(altered.qualityName, "altered dominant");
+  assert.deepEqual(altered.notes, ["C", "E", "Bb", "Db", "Ab"]);
+  // The third and seventh that make it a dominant are both still there.
+  const steps = new Set(altered.intervals.map((step) => step % 12));
+  assert.ok(steps.has(4) && steps.has(10));
+  // Written either way, and on any root.
+  assert.deepEqual(parseChordSymbol("Calt").intervals, altered.intervals);
+  assert.equal(parseChordSymbol("G7alt").notes[0], "G");
+});
