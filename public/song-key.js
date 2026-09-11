@@ -226,12 +226,21 @@ export function inferKey(symbols) {
   };
 }
 
+/* The pitch classes the key's scale contains. Exported because asking whether
+   one note belongs to a key is a different question from asking whether a whole
+   chord does, and a caller comparing two chords against each other needs the
+   first one. */
+export function keyPitchClasses(key) {
+  if (!key) return null;
+  const scale = key.mode === "major" ? MAJOR_SCALE : MINOR_SCALE;
+  return new Set(scale.map((step) => (key.tonicPc + step) % 12));
+}
+
 /* True when every note of the chord belongs to the key's scale. */
 export function isDiatonic(symbol, key) {
   const chord = parseChordSymbol(symbol);
   if (!chord || !key) return false;
-  const scale = key.mode === "major" ? MAJOR_SCALE : MINOR_SCALE;
-  const allowed = new Set(scale.map((step) => (key.tonicPc + step) % 12));
+  const allowed = keyPitchClasses(key);
   return [...pitchClasses(chord)].every((note) => allowed.has(note));
 }
 

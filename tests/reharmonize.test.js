@@ -9,7 +9,7 @@ const names = (chord, context) => suggestReharmonizations(chord, context).map(it
 test('offers parallel major/minor changes and rich extensions', () => {
   for (const name of ['Cm', 'Cm9', 'Cmaj9', 'Cmaj9#11', 'Am7']) assert.ok(names('C').includes(name), name);
   for (const name of ['A', 'Amaj9', 'Am11', 'Ammaj7', 'Cmaj7']) assert.ok(names('Am').includes(name), name);
-  assert.equal(suggestReharmonizations('C').find(item => item.symbol === 'Cm').bold, true);
+  assert.equal(suggestReharmonizations('C').find(item => item.symbol === 'Cm').role, 'shade');
 });
 
 test('describes the actual note changes for parallel minor', () => {
@@ -192,4 +192,117 @@ test('every suggestion carries the shape, so the panel can state it once', () =>
   assert.ok(options.length > 0);
   for (const option of options) assert.equal(option.progression.label, 'ii–V–I');
   for (const option of suggestReharmonizations('G7')) assert.equal(option.progression, null);
+});
+
+/* ---------- suggestions drawn from the chord's function in the key ---------- */
+
+test('substitutes the key\'s own chords a third either side', () => {
+  const cMajor = inferKey(['C', 'F', 'G', 'C', 'Am', 'Dm', 'G', 'C']);
+  // The tonic's neighbours a third away are iii and vi, in the key's qualities.
+  const tonic = names('C', { key: cMajor });
+  assert.ok(tonic.includes('Em7'), 'iii7 above the tonic');
+  assert.ok(tonic.includes('Am7'), 'vi7 below the tonic');
+  // The fourth degree's are vi and ii, which the blind relative-third rule
+  // could never have found: it only ever looked a fixed interval away.
+  const fourth = names('F', { key: cMajor });
+  assert.ok(fourth.includes('Am7'), 'iii7 above the fourth');
+  assert.ok(fourth.includes('Dm7'), 'ii7 below the fourth');
+  // Both stay inside the key, so both sit in the second band.
+  const option = suggestReharmonizations('F', { key: cMajor }).find(item => item.symbol === 'Dm7');
+  assert.equal(option.strength, 2);
+  assert.equal(option.diatonic, true);
+});
+
+test('borrows the same degree from the parallel mode', () => {
+  const cMajor = inferKey(['C', 'F', 'G', 'C', 'Am', 'Dm', 'G', 'C']);
+  // One rule, the whole borrowed vocabulary: i, iv, v, bVI on their degrees.
+  for (const [chord, borrowed] of [['C', 'Cm'], ['F', 'Fm'], ['G', 'Gm'], ['Am', 'Ab'], ['Em', 'Eb']]) {
+    assert.ok(names(chord, { key: cMajor }).includes(borrowed), `${borrowed} for ${chord}`);
+  }
+  const option = suggestReharmonizations('Am', { key: cMajor }).find(item => item.symbol === 'Ab');
+  assert.equal(option.numeral, 'bVI');
+  assert.equal(option.strength, 3, 'a borrowed chord reaches outside the key');
+  assert.match(option.explanation, /sixth degree of C minor/);
+});
+
+test('a minor key only borrows back the two chords that are idiomatic', () => {
+  const aMinor = inferKey(['Am', 'Dm', 'E7', 'Am', 'F', 'G', 'E7', 'Am']);
+  assert.equal(aMinor.name, 'A minor');
+  // The raised third of a Picardy close, and the raised sixth that makes the
+  // fourth degree major.
+  assert.ok(names('Am', { key: aMinor }).includes('A'), 'I borrowed on the tonic');
+  assert.ok(names('Dm', { key: aMinor }).includes('D'), 'IV borrowed on the fourth');
+  // Everything else would be offered only for the sake of symmetry.
+  const sixth = suggestReharmonizations('F', { key: aMinor });
+  assert.ok(!sixth.some(item => /^Borrowed/.test(item.flavor)), 'nothing borrowed onto bVI');
+});
+
+test('offers the chromatic ways into a chord the key can name', () => {
+  const cMajor = inferKey(['Dm7', 'G7', 'Cmaj7', 'Dm7', 'G7', 'Cmaj7']);
+  // A flattened seventh leaning up into the tonic, offered only where the
+  // tonic is the chord that follows.
+  assert.ok(names('G7', { nextChord: 'Cmaj7', key: cMajor }).includes('Bb7'));
+  assert.ok(!names('G7', { nextChord: 'Am', key: cMajor }).includes('Bb7'));
+  // The Neapolitan stands in for the chords that set up the dominant.
+  assert.ok(names('Dm7', { key: cMajor }).includes('Db'), 'bII on the second degree');
+  assert.ok(names('F', { key: cMajor }).includes('Db'), 'bII on the fourth degree');
+  assert.ok(!names('C', { key: cMajor }).includes('Db'), 'not on the tonic');
+});
+
+test('any chord can slide into the next one, not only a dominant', () => {
+  // The tritone substitute taken from the other side, so a plain triad gets one.
+  const options = suggestReharmonizations('C', { nextChord: 'F' });
+  const slide = options.find(item => item.flavor === 'Slide into F');
+  assert.equal(slide.symbol, 'Gb7');
+  assert.equal(slide.strength, 4);
+  // A dominant already offers one from its own root, so it is not offered twice.
+  assert.ok(!suggestReharmonizations('G7', { nextChord: 'C' }).some(item => /^Slide/.test(item.flavor)));
+});
+
+/* ---------- how far a suggestion reaches ---------- */
+
+test('measures reach against the key, not against the chord alone', () => {
+  const cMajor = inferKey(['C', 'F', 'G', 'C', 'Am', 'Dm', 'G', 'C']);
+  const band = (chord, name) =>
+    suggestReharmonizations(chord, { key: cMajor }).find(item => item.symbol === name).strength;
+  // The same raised eleventh: chromatic over the tonic, plain lydian colour
+  // over the fourth degree, where every note of it is already in the key.
+  assert.equal(band('C', 'Cmaj9#11'), 3);
+  assert.equal(band('F', 'Fmaj9#11'), 1);
+  // A diatonic substitution is a smaller step than a borrowed chord, however
+  // far its root moves. The old measure had this the other way round.
+  assert.ok(band('C', 'Am7') < band('C', 'Cm'));
+  // Changing what the progression does outranks any reading of the notes.
+  assert.equal(suggestReharmonizations('G7', { nextChord: 'C', key: cMajor })
+    .find(item => item.symbol === 'Db7').strength, 4);
+});
+
+test('a chord already outside the key is not charged for staying there', () => {
+  const cMajor = inferKey(['C', 'F', 'G', 'C', 'Am', 'Dm', 'G', 'C']);
+  // Eb is bIII, so its own Eb and Bb are outside C major whatever is done to
+  // it. Extending it is still only extending it; taking its third down is not.
+  const options = suggestReharmonizations('Eb', { key: cMajor });
+  assert.equal(options.find(item => item.symbol === 'Ebmaj7').strength, 1);
+  assert.equal(options.find(item => item.symbol === 'Ebm').strength, 3);
+  // The flat fact about the chord is still reported as it stands.
+  assert.equal(options.find(item => item.symbol === 'Ebmaj7').diatonic, false);
+});
+
+test('without a key the bands fall back to the role alone', () => {
+  const options = suggestReharmonizations('C');
+  const band = name => options.find(item => item.symbol === name).strength;
+  assert.equal(band('Cmaj7'), 1, 'adds notes only');
+  assert.equal(band('Cmaj9#11'), 2, 'an altered tension, with nothing to judge it against');
+  assert.equal(band('Cm'), 2, 'a changed quality on the same root');
+  assert.equal(band('Am7'), 3, 'a moved root');
+  for (const option of options) assert.equal(option.diatonic, null);
+  assert.match(options.find(item => item.symbol === 'Cm').strengthNote, /same root/);
+});
+
+test('every suggestion carries words for its band, since the tint cannot speak', () => {
+  const cMajor = inferKey(['C', 'F', 'G', 'C', 'Am', 'Dm', 'G', 'C']);
+  for (const option of suggestReharmonizations('C', { nextChord: 'Am', key: cMajor })) {
+    assert.ok(option.strengthNote, option.symbol);
+    assert.ok(option.strength >= 1 && option.strength <= 4, option.symbol);
+  }
 });

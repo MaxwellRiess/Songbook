@@ -1797,10 +1797,14 @@ textarea {
 .reharm-option span { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
 
 /* How far a suggestion reaches is carried by the tint rather than by a label:
-   additions sit on the plain panel, a changed quality on the mild accent, and
-   a changed root on the full soft accent. */
+   colours that only add notes sit on the plain panel, a substitution that stays
+   in the key on the mild accent, one that reaches outside it on the firm accent,
+   and a change to what the progression does on the full accent. The fourth band
+   takes a left edge as well, because there is no tint left above the third that
+   still holds its text. */
 .chord-popover .reharm-option[data-strength="2"] { background: var(--accent-mild); border-color: var(--accent-firm); }
 .chord-popover .reharm-option[data-strength="3"] { background: var(--accent-firm); border-color: var(--accent); }
+.chord-popover .reharm-option[data-strength="4"] { background: var(--accent-firm); border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent-strong); }
 /* A suggestion that introduces a cross relation with a neighbouring chord. The
    marker is a dotted underline on the name, matching how a reharmonized chord
    is marked in the sheet itself. */
