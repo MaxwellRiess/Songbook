@@ -65,11 +65,13 @@ of a Supabase sync or a JSON backup.
 ## Reharmonizing a song
 
 Click or tap a chord, then turn on **Re-harmonize**. Alternatives range from
-gentler additions (sevenths, ninths, sixths) to bolder parallel major/minor swaps,
-raised elevenths, altered dominants and tritone substitutions. Each choice explains
-its effect and shows shared, added and removed chord tones. Suggestions are
-harmonic possibilities; the app does not analyze the melody or guarantee a
-substitution will fit it, however much harmonic context it has.
+gentler additions (sevenths, ninths, sixths) through altered dominants, raised
+elevenths, suspensions and raised fifths, to borrowed chords, substitutions drawn
+from elsewhere in the key, tritone substitutions and chords that change where the
+progression is heading. Each choice explains its effect and shows shared, added
+and removed chord tones. Suggestions are harmonic possibilities; the app does not
+analyze the melody or guarantee a substitution will fit it, however much harmonic
+context it has.
 
 ### What the suggestions know
 
@@ -104,9 +106,28 @@ explains itself as the bass walk it makes, `D → Db → C`, rather than in gene
 terms.
 
 With a key in hand, each suggestion is labelled with its degree and whether it
-sits inside the key, and two suggestions become available that make no sense
-without it: a flat seventh on the tonic and on the fourth, the blues and gospel
-colours that fall outside the major scale.
+sits inside the key, and a second set of suggestions becomes available: the ones
+that come from what the chord is *doing* rather than from what it is.
+
+A chord read on its own carries no function to substitute for, so without a key
+the panel can only offer the same root dressed differently. The degree does carry
+one, and two rules cover most of what players reach for. The key's own chords a
+third above and a third below share two of the three notes, so either stands in
+for this one without argument: on the tonic of C major that is `Em7` and `Am7`,
+on the fourth degree `Am7` and `Dm7`. And the same degree taken from the parallel
+mode is the whole borrowed-chord vocabulary in one rule, giving `i`, `iiø`,
+`bIII`, `iv`, `v`, `bVI` and `bVII` on the degrees of a major key.
+
+The borrowing only runs both ways where it is idiomatic. A major key borrows from
+its parallel minor freely; a minor key borrowing back from major is really only
+two chords, the raised third of a Picardy close and the raised sixth that makes
+the fourth degree major, so the other degrees are left alone rather than offered
+for the sake of symmetry.
+
+Three chromatic options are offered where the key can place them: a flat seventh
+on the tonic and on the fourth, the blues and gospel colours that fall outside the
+major scale; a backdoor dominant where the tonic is the chord that follows; and a
+Neapolitan on the degrees that set up the dominant.
 
 A suggestion whose name is underlined with dots introduces a **cross relation**
 with a neighbour: the same letter in two chromatic forms a beat apart, C against
@@ -150,11 +171,21 @@ Select a suggestion to inspect its guitar shapes and compare **Hear original** w
 Transpose continues to work on the arrangement. Reopen the chord to **Restore
 original chord**, or use **Reset chords** to clear all replacements for the song.
 
-Each suggestion carries a deepening accent tint for how far the change reaches:
-untinted only adds notes, a mild tint changes the chord's quality or function
-over the same root, and a firm tint moves the root as well. The words are in each
-row's tooltip and accessible name, so the colour is a shortcut rather than the
-only carrier.
+Each suggestion carries a deepening accent tint for how far the change reaches,
+in four bands: untinted only adds notes, a mild tint substitutes something that
+stays inside the key, a firm tint reaches outside it, and a firm tint with a left
+edge changes where the progression goes. The words are in each row's tooltip and
+accessible name, so the colour is a shortcut rather than the only carrier.
+
+How far a change reaches is measured against the song's key, not against the
+chord in isolation, and against the chord it replaces rather than against the
+scale alone. So a raised eleventh is a chromatic reach over the tonic and plain
+lydian colour over the fourth degree, where every note of it is already in the
+key. And a chord already sitting outside the key is not charged again for staying
+there: `bIII` in a major key is outside it whatever you do, so extending it is
+still only extending it. Without a confident key there is nothing to measure
+against, and the bands fall back to what the suggestion does to the chord: adding
+notes, changing its quality, or moving its root.
 
 Drafts stay available while switching songs in the current tab, but are cleared on
 reload or when the underlying sheet changes. **Copy** includes the draft; **Save new
