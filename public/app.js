@@ -29,7 +29,7 @@ import { buildMetaPills, normalizeSong, toPlainChordSheet } from "./song-model.j
 import { detectSongConflicts, mergePlaylists, mergeSongs } from "./song-sync.js";
 import { renderSheet as buildSheetFragment, renderedSheetText } from "./song-renderer.js";
 import { initFollowMode } from "./follow-mode.js";
-import { chordPanelState, closeChordPopover, initChordPopover, restoreChordPanel } from "./chord-popover.js";
+import { chordPanelState, closeChordPopover, harmonyPanelOpen, initChordPopover, restoreChordPanel, toggleHarmonyPanel } from "./chord-popover.js";
 import { DEFAULT_ACCENT, DEFAULT_MAIN, deriveTint, isDefaultTint } from "./palette.js";
 import { inferKey } from "./song-key.js";
 import { collectSongChords, initChordExplorer, songChordSequence } from "./chord-explorer.js";
@@ -91,6 +91,7 @@ const elements = {
   songPanel: document.querySelector(".song-panel"),
   headerPlaylistMenuButton: document.querySelector("#headerPlaylistMenuButton"),
   headerPlaylistMenu: document.querySelector("#headerPlaylistMenu"),
+  harmonyPanelButton: document.querySelector("#harmonyPanelButton"),
   editButton: document.querySelector("#editButton"),
   deleteButton: document.querySelector("#deleteButton"),
   copyButton: document.querySelector("#copyButton"),
@@ -188,6 +189,13 @@ initChordPopover(elements.viewer, {
     nextChord: neighbourChord(token, 1),
     key: state.songKey
   }),
+  /* The panel can be opened from the sheet, from its own close button or from
+     the header, so the header button follows the panel rather than tracking
+     its own idea of whether it is open. */
+  onPanelChange: (open) => {
+    elements.harmonyPanelButton.setAttribute("aria-pressed", String(open));
+    elements.harmonyPanelButton.setAttribute("aria-label", open ? "Hide the harmony panel" : "Show the harmony panel");
+  },
   onReplace: (token, alternative) => {
     const song = getSelectedSong();
     if (!song) return;
@@ -272,6 +280,13 @@ function bindEvents() {
   });
 
   elements.newSongButton.addEventListener("click", () => openSongDialog());
+  /* A way into the harmony panel that does not go through a chord on the
+     sheet. It opens on the chord the panel was last pointed at, or the first in
+     the song, and closes the panel if it is already up. */
+  elements.harmonyPanelButton.addEventListener("click", () => {
+    const opened = toggleHarmonyPanel();
+    if (!opened && !harmonyPanelOpen()) elements.harmonyPanelButton.setAttribute("aria-pressed", "false");
+  });
   elements.editButton.addEventListener("click", () => openSongDialog(getSelectedSong()));
   elements.deleteButton.addEventListener("click", deleteSelectedSong);
   elements.copyButton.addEventListener("click", copySelectedSong);
@@ -864,6 +879,7 @@ function renderSelectedSong() {
   renderHeaderPlaylistPicker(song);
   elements.editButton.disabled = !hasSong;
   elements.deleteButton.disabled = !hasSong;
+  elements.harmonyPanelButton.disabled = !hasSong;
   elements.copyButton.disabled = !hasSong;
   elements.autoscrollToggle.disabled = !hasSong;
   elements.autoscrollControls.classList.toggle("hidden", !hasSong);

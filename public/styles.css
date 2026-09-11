@@ -1602,6 +1602,15 @@ textarea {
   max-width: 168px;
 }
 
+/* A header action that is holding something open says so, since the thing it
+   opened is a column beside the sheet rather than anything over this button. */
+.header-actions button[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  border-color: var(--accent);
+  font-weight: 650;
+}
+
 /* Said to a screen reader and to nothing else. */
 .sr-only {
   position: absolute;
