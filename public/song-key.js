@@ -275,7 +275,11 @@ export function romanNumeral(symbol, key) {
   const numeral = lower ? NUMERALS[index].toLowerCase() : NUMERALS[index];
   const suffix = chord.symbol
     .slice(chord.root.length)
-    .replace(/^(m|min)(?![a])/, "")
+    /* The chord's own minor is already carried by the numeral's case, so it
+       comes off the suffix. Only "maj" may keep it: every other suffix that
+       starts "ma" is a minor chord with something added, and "madd9" on the
+       fourth degree is ivadd9, not ivmadd9. */
+    .replace(/^(min|m|[-−])(?!aj)/, "")
     .replace(/^dim/, "°");
 
   return `${accidental}${numeral}${suffix}`;

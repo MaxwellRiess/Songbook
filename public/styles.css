@@ -1602,6 +1602,16 @@ textarea {
   max-width: 168px;
 }
 
+/* Said to a screen reader and to nothing else. */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip-path: inset(50%);
+  overflow: hidden;
+  white-space: nowrap;
+}
+
 /* ---------- chord lookup panel ---------- */
 
 .chord-dialog-body {
@@ -1798,6 +1808,13 @@ textarea {
 .reharm-panel.is-collapsed .reharm-body { display: none; }
 .reharm-bar { display: flex; align-items: baseline; gap: 10px; margin-bottom: 7px; }
 .reharm-context { font-size: 13px; font-weight: 650; flex: 1; min-width: 0; }
+/* Three chord names in a row say nothing about which of them is the subject,
+   so the one being worked on is marked rather than left to its position. */
+.reharm-run { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 3px; }
+.reharm-run-chord { color: var(--muted); font-weight: 600; }
+.reharm-run-chord.is-here { color: var(--accent-strong); font-weight: 750; background: var(--accent-soft); border-radius: 6px; padding: 1px 6px; }
+.reharm-run-arrow, .reharm-run-sep { color: var(--muted); font-weight: 400; }
+.reharm-run-sep { margin: 0 3px; }
 .chord-popover .reharm-collapse { flex: none; padding: 3px 9px; font-size: 11px; min-height: 26px; border-radius: 7px; color: var(--muted); }
 
 /* One chip per band, so the list can be cut to the bold end without scrolling
@@ -1819,9 +1836,13 @@ textarea {
   -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
   mask-image: linear-gradient(to bottom, #000 calc(100% - 26px), transparent);
 }
-.chord-popover .reharm-option { display: grid; grid-template-columns: minmax(50px, auto) 1fr; align-items: baseline; text-align: left; gap: 4px 10px; padding: 7px 10px; border-radius: 9px; min-height: 0; }
+.chord-popover .reharm-option { display: grid; grid-template-columns: minmax(50px, auto) 1fr auto; align-items: baseline; text-align: left; gap: 4px 10px; padding: 7px 10px; border-radius: 9px; min-height: 0; }
 .reharm-option strong { color: var(--accent-strong); font-size: 15px; }
 .reharm-option span { color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+/* Held to the right edge, so reading down the list gives the degrees as their
+   own column beside the chord names. */
+.reharm-option .reharm-degree { color: var(--muted); font-size: 11px; text-align: right; justify-self: end; white-space: nowrap; overflow-wrap: normal; }
+.reharm-option .reharm-degree:empty { display: none; }
 
 /* How far a suggestion reaches is carried by the tint rather than by a label:
    colours that only add notes sit on the plain panel, a substitution that stays
@@ -1841,7 +1862,7 @@ textarea {
    labels line up. Without subgrid each row sizes its own columns, which still
    reads correctly, just less tidily. */
 @supports (grid-template-columns: subgrid) {
-  .reharm-options { grid-template-columns: auto 1fr; }
+  .reharm-options { grid-template-columns: auto 1fr auto; }
   .chord-popover .reharm-option { grid-column: 1 / -1; grid-template-columns: subgrid; }
 }
 /* An inset ring, so the choice stays obvious on top of any strength tint. */
@@ -1852,9 +1873,14 @@ textarea {
    left, what follows on the right, and the middle holding the chord as written
    over whatever has been picked for it. The columns are named underneath
    rather than on the buttons, which carry the chord names instead. */
-.reharm-audio { display: grid; grid-template-columns: 1fr 1.25fr 1fr; gap: 6px; margin: 12px 0 6px; align-items: end; }
-.reharm-audio-col { display: grid; gap: 4px; min-width: 0; }
-.chord-popover .reharm-audio button { width: 100%; min-width: 0; padding: 6px 4px; font-size: 12px; min-height: 38px; overflow-wrap: anywhere; }
+.reharm-audio { display: grid; grid-template-columns: 1fr 1.15fr 1fr; gap: 6px; margin: 10px 0 6px; align-items: stretch; }
+/* One block rather than a pedestal. Every column is the same height, so the
+   neighbours are single buttons the full depth of the pair in the middle
+   rather than sitting under half of it. The rows are `1fr` so the grid decides
+   the height and the buttons fill whatever they are given. */
+.reharm-audio-col { display: grid; grid-template-rows: 1fr auto; gap: 4px; min-width: 0; }
+.reharm-audio-col.is-middle { grid-template-rows: 1fr 1fr auto; }
+.chord-popover .reharm-audio button { width: 100%; min-width: 0; padding: 4px; font-size: 12px; min-height: 30px; overflow-wrap: anywhere; }
 /* The chord as written is the reference the other three are heard against. */
 .chord-popover .reharm-hear-original { border-color: var(--accent-firm); }
 .chord-popover .reharm-hear[disabled], .chord-popover .reharm-audio button[disabled] { color: var(--muted); }

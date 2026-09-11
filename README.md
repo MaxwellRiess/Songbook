@@ -101,7 +101,10 @@ the confidence floor sits in the gap between the two bands, which
 `tests/song-key.test.js` checks has not closed.
 
 Where the chord either side makes a shape worth naming, the header says so:
-`Dm7 → G7 → Cmaj7 · V7 in C major · ii–V–I`. It recognises a two-five-one, a
+`Dm7 → G7 → Cmaj7 · V7 in C major · ii–V–I`. The chord being worked on is
+picked out of that run rather than left to its position, since three names in a
+row say nothing about which of them is the subject, and at the start or end of a
+section there are only two. It recognises a two-five-one, a
 dominant sidestepping to the sixth degree instead of resolving, a chord repeated,
 and a dominant of whatever follows. Inside a two-five-one the tritone substitute
 explains itself as the bass walk it makes, `D → Db → C`, rather than in general
@@ -118,8 +121,13 @@ and on a deceptive cadence it turns the sidestep into an arrival. A dominant of
 whatever follows can also be stepped through rather than arrived on, by putting
 the target's second degree where its dominant was.
 
-With a key in hand, each suggestion is labelled with its degree and whether it
-sits inside the key, and a second set of suggestions becomes available: the ones
+With a key in hand, every suggestion carries its degree on its own row, held to
+the right edge so that reading down the list gives the degrees as their own
+column beside the chord names. The chord window carries the degree of whatever
+chord it is showing, hover preview included. Reading a numeral against a chord
+name over and over is how the relationship between the two stops needing to be
+worked out, and that cannot be built one selected row at a time. The detail
+below a selected suggestion adds whether it sits inside the key, and a second set of suggestions becomes available: the ones
 that come from what the chord is *doing* rather than from what it is.
 
 A chord read on its own carries no function to substitute for, so without a key
@@ -199,7 +207,9 @@ worked on. Clicking another chord moves the panel to it, as before.
 Select a suggestion to inspect its guitar shapes and hear it where it sits. The
 audio row is laid out as the bar is: the chord before on the left, the chord
 after on the right, and the middle holding the chord as written over whatever
-has been picked for it, with the columns named underneath. Hearing a suggestion
+has been picked for it, with the columns named underneath. It is one block
+rather than a pedestal, every column the same depth, since these are previews
+under a panel whose subject is the chord shape above them. Hearing a suggestion
 on its own says how it sounds; hearing it between its neighbours says whether it
 works. Audio uses a synthesized standard-tuning voicing without capo.
 **Use this chord** changes only that occurrence and marks it with a dotted underline.
