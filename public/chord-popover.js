@@ -167,6 +167,42 @@ export function closeChordPopover() {
   close();
 }
 
+/* Opening the panel from outside the sheet, where there is no chord under the
+   pointer to open it on. It picks up where it was left: the chord it was last
+   pointed at if that chord is still in the rendered sheet, and otherwise the
+   first one in the song.
+
+   Reaching for this is asking for harmony, so it opens on the suggestions even
+   if they were last stood down. The small Hide inside the panel is what that
+   preference is for, and honouring it here would answer the button with a
+   panel showing none of what was asked for. */
+export function toggleHarmonyPanel() {
+  if (isOpenPanel()) {
+    close();
+    return false;
+  }
+  const token = firstChordToken();
+  if (!token) return false;
+  collapsed = false;
+  open(token, { mode: persistentMode(), sticky: true, keepPanel: true });
+  return true;
+}
+
+export function harmonyPanelOpen() {
+  return isOpenPanel();
+}
+
+/* The sheet draws each chord twice, once for the column layout and once for the
+   flowed one, and only the layout in use is laid out at all. A panel anchored
+   to the hidden twin would mark a chord nobody can see, so the first one with a
+   box is the one to take. */
+function firstChordToken() {
+  if (anchor?.isConnected) return anchor;
+  if (!sheetRoot) return null;
+  const tokens = [...sheetRoot.querySelectorAll(".chord-token[data-chord-id]")];
+  return tokens.find(token => token.offsetParent !== null) || tokens[0] || null;
+}
+
 /* Re-rendering the sheet replaces every chord token, so a panel pointing at one
    loses its anchor. Applying a chord is part of working through a song with the
    panel open, so the caller captures what the panel is showing, re-renders, and
@@ -288,6 +324,10 @@ function ensureUi() {
     reharmonizing = true;
     renderReharmonization();
     reposition();
+    /* The window was already up, so this widens it into the panel rather than
+       opening anything, and is the one way in that does not pass through
+       `open`. It still has to say so. */
+    announcePanel();
   });
   root.querySelector(".reharm-collapse").addEventListener("click", () => {
     collapsed = !collapsed;
@@ -353,6 +393,14 @@ function open(token, { mode: wanted, sticky: hold = false, keepPanel: forcePanel
     renderReharmonization();
   }
   reposition();
+  announcePanel();
+}
+
+/* The panel can be opened and closed from the sheet, from its own close button
+   and from the song header, so whatever is showing its state elsewhere is told
+   rather than left to guess. */
+function announcePanel() {
+  callbacks.onPanelChange?.(isOpenPanel());
 }
 
 /* What the chord is, and where it sits. The degree is the part worth having in
@@ -430,6 +478,12 @@ function applyMode(wanted) {
   /* The suggestions belong to the panel, so the class that widens the window
      for them has to come off on the way back to a small one. */
   if (mode === "floating") ui.root.classList.remove("is-reharmonizing");
+  /* The way into the panel belongs to the small window and to nothing else.
+     Deciding that here rather than while drawing the panel matters: the panel
+     only draws itself in its own modes, so a decision made there can only ever
+     hide this button, never bring it back, and the small window would lose it
+     for the rest of the session after the panel had been opened once. */
+  ui.root.querySelector(".reharm-toggle").hidden = mode !== "floating";
   ui.root.setAttribute("aria-label", mode === "floating" ? "Chord shape" : "Harmony panel");
   document.querySelector("#appShell")?.classList.toggle("harmony-docked", mode === "docked");
   if (mode !== "floating") {
@@ -451,6 +505,7 @@ function close() {
   }
   document.querySelector("#appShell")?.classList.remove("harmony-docked");
   mode = "floating";
+  announcePanel();
 }
 
 /* Only the transient preview needs placing. The docked column and the bottom
@@ -488,7 +543,6 @@ function renderReharmonization() {
   /* The small window shows only a shape and a way in; the panel always shows
      the suggestions unless they have been stood down. */
   panel.hidden = mode === "floating";
-  ui.root.querySelector(".reharm-toggle").hidden = mode !== "floating";
   ui.root.classList.toggle("is-reharmonizing", reharmonizing);
   panel.classList.toggle("is-collapsed", !reharmonizing);
   collapse.textContent = reharmonizing ? "Hide" : "Show";

@@ -54,6 +54,8 @@ of a Supabase sync or a JSON backup.
 - Choose a main and accent colour under **Settings and syncing → Colours**
 - Hover or click a chord for a small window with its shapes, and step through
   the voicings there without anything else opening
+- Open the harmony panel from **Harmony** in the song header, or from the small
+  window's own button
 - Its **Re-harmonize** button opens the harmony panel, which stays open: on a
   wide screen it docks down the right and the sheet reflows beside it, so you
   can scroll the song and click through its chords with the panel holding still
@@ -175,9 +177,17 @@ that window open so the shapes can be stepped through without the panel in the
 way, and hovering elsewhere no longer pulls it off the chord being looked at.
 Clicking away dismisses it.
 
-The button is the only thing that opens the panel. Looking up a shape and
-reaching for harmony are different jobs, and the smaller one should not drag the
-larger one open.
+The button is the only way the small window opens the panel. Looking up a shape
+and reaching for harmony are different jobs, and the smaller one should not drag
+the larger one open.
+
+**Harmony** in the song header opens the panel without going through a chord at
+all, and closes it again. It picks up where the panel was left: the chord it was
+last pointed at if that chord is still in the rendered sheet, and otherwise the
+first chord in the song. Reaching for it is asking for harmony, so it opens on
+the suggestions even where they were last stood down. The button follows the
+panel rather than tracking its own idea of whether it is open, so closing from
+the panel's own close button leaves it unpressed.
 
 Once the panel is open it stays open until the close button dismisses it. Clicking elsewhere on the sheet does not close it, so the
 song can be scrolled and its chords clicked through while the panel holds still.
