@@ -65,6 +65,8 @@ of a Supabase sync or a JSON backup.
   concert pitches of standard tuning (E2 A2 D3 G3 B3 E4, A4 = 440 Hz)
 - Copy the stored chord sheet
 - Import from Ultimate Guitar URLs when the page HTML is accessible
+- Clip a loaded Ultimate Guitar or GuitarTuna page with the browser extension, or
+  from Safari on an iPhone with a Shortcut
 
 ## Reharmonizing a song
 
@@ -283,7 +285,8 @@ https://maxwellriess.github.io/Songbook/
 
 ## Ultimate Guitar and GuitarTuna Import
 
-The hosted PWA does not server-scrape chord sites. Use the browser extension clipper instead:
+The hosted PWA does not server-scrape chord sites. Use the browser extension clipper on a
+desktop, or the Shortcut on an iPhone:
 
 1. Open a tab on `tabs.ultimate-guitar.com`, `ultimate-guitar.com` or `guitartuna.com`
 2. Click **Songbook Clipper**
@@ -291,6 +294,8 @@ The hosted PWA does not server-scrape chord sites. Use the browser extension cli
 4. Click **Clip current tab**
 
 The extension saves the clipped song into Songbook's IndexedDB storage and syncs it to Supabase when you are signed in.
+
+On an iPhone, see **Clipping on an iPhone** below.
 
 Manual entry still accepts Ultimate Guitar chord markup such as:
 
@@ -323,6 +328,65 @@ Use it:
 On Ultimate Guitar the extension first tries to read the embedded page data. Ultimate Guitar's own scripts strip that data from the page once it loads, so the extension re-reads the page's server HTML to recover it. Failing that, it reads the song details from the page's schema.org JSON-LD and falls back to visible chord-sheet text.
 
 GuitarTuna renders a song as a beat grid rather than a chord sheet, so the extension reads the grid instead. Every lyric line is a row of beat cells, each declaring how many characters it spans, so adding up the cells before a chord gives the column that chord sits above. The extension rebuilds a plain chords-over-lyrics sheet from those columns and takes the title, artist, key, capo and tuning from the page's schema.org JSON-LD.
+
+The readers are `chord-utils-content.js`, `guitartuna-content.js` and
+`ultimate-guitar-content.js`, and `clipper-content.js` picks between them from the
+page's host. The popup injects all four and asks the dispatcher for the song, so
+which reader a page gets is decided in one place rather than once per front end.
+`shortcut-entry.js` sits in the same folder but is not part of the extension; it is
+the tail of the iPhone snippet described below.
+
+## Clipping on an iPhone
+
+iOS runs no Chrome extensions, and the other iOS browsers are Safari underneath, so
+the extension cannot be installed there at all. The same readers run inside an iOS
+Shortcut instead, through the Shortcuts action **Run JavaScript on Web Page**.
+
+The setup page is at
+[`/shortcut/`](https://maxwellriess.github.io/Songbook/shortcut/), which is the
+place to do this from, since the Shortcut needs about 22 KB of JavaScript pasted
+into it and the page has a copy button. In outline:
+
+1. Copy the script from that page
+2. In **Shortcuts**, make a new Shortcut, turn on **Show in Share Sheet** and limit
+   its share sheet types to **Safari web pages**
+3. Add **Run JavaScript on Web Page** and paste the script over its placeholder
+4. Branch on the result: **Show Alert** with its `error` if there is one, otherwise
+   **Open URLs** with its `url`
+
+Then open a chord page in Safari, tap **Share**, and pick the Shortcut. iOS asks
+once per site before it will run the script.
+
+### How it gets the song across
+
+The extension writes the song into the app's IndexedDB from a second tab, which
+needs extension APIs iOS does not have. The Shortcut has only a URL to work with,
+so it uses the `#import=` fragment the app already reads on load: the song is
+JSON, base64url encoded, and the app decodes it, saves it, syncs it and strips the
+fragment back off the URL. A fragment never leaves the browser, so the song does
+not travel over the network on the way in.
+
+Two things follow from Safari being the only way in:
+
+- A home screen web app keeps its own storage, separate from Safari's. The clip
+  lands in the Safari copy of Songbook, so sign in to Supabase sync there too and
+  the song reaches the installed copy on its next sync.
+- A chord sheet long enough to overrun a URL is refused with a message rather than
+  arriving truncated. Nothing near a real song's length comes close to the limit.
+
+### Building the snippet
+
+`public/shortcut/songbook-clip.js` is generated, and the setup page serves it. It is
+the extension's readers concatenated with `extension/shortcut-entry.js`, so after
+editing any reader:
+
+```sh
+npm run build:shortcut
+```
+
+`tests/shortcut-snippet.test.js` fails if the published snippet has drifted from its
+sources, and runs the built snippet against a stand-in page to check the URL it
+produces decodes back into the song.
 
 ## Supabase Sync
 

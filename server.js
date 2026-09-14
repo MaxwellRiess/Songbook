@@ -374,7 +374,9 @@ async function readJsonBody(req) {
 }
 
 async function serveStatic(pathname, res) {
-  const safePath = pathname === "/" ? "/index.html" : pathname;
+  // GitHub Pages serves a directory as its index.html, so /shortcut/ has to
+  // reach the same page here as it does there.
+  const safePath = pathname.endsWith("/") ? `${pathname}index.html` : pathname;
   const target = normalize(join(PUBLIC_DIR, safePath));
 
   if (!target.startsWith(PUBLIC_DIR)) {
