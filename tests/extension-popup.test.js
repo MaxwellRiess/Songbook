@@ -43,7 +43,7 @@ test("retries the Songbook import instead of waiting for a tab-complete event", 
       scripting: {
         async executeScript(options) {
           if (options.files) return [{}];
-          if (options.func?.name === "extractSongFromLoadedPage") {
+          if (options.func?.name === "readSongFromLoadedPage") {
             return [{ result: { song: { title: "Sovay", artist: "James Yorkston", rawContent: "Am\nLyrics" } } }];
           }
           if (options.func?.name === "importSongIntoSongbookPage") {
@@ -67,6 +67,42 @@ test("retries the Songbook import instead of waiting for a tab-complete event", 
   assert.deepEqual(removedTabs, [8]);
   assert.equal(elements.get("#pageStatus").textContent, "Done");
   assert.equal(elements.get("#message").textContent, "Saved to Songbook.");
+});
+
+test("names the pages it clips when Chrome refuses to inject into the tab", async () => {
+  const source = await readFile(new URL("../extension/popup.js", import.meta.url), "utf8");
+  const elements = new Map();
+
+  const context = {
+    URL,
+    crypto: webcrypto,
+    setTimeout,
+    clearTimeout,
+    document: {
+      querySelector(selector) {
+        if (!elements.has(selector)) elements.set(selector, fakeElement());
+        return elements.get(selector);
+      }
+    },
+    chrome: {
+      storage: { local: { get(_keys, callback) { callback({}); }, set() {} } },
+      tabs: {
+        async query() { return [{ id: 3, url: "chrome://extensions" }]; }
+      },
+      scripting: {
+        async executeScript() {
+          throw new Error("Cannot access contents of the page.");
+        }
+      }
+    }
+  };
+  context.globalThis = context;
+  vm.runInNewContext(source, context);
+
+  await context.clipCurrentTab();
+
+  assert.equal(elements.get("#message").textContent, "Open a loaded Ultimate Guitar or GuitarTuna chord page first.");
+  assert.equal(elements.get("#pageStatus").textContent, "Not saved");
 });
 
 function fakeElement() {

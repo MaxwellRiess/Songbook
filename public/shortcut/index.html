@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Songbook clipper for iPhone</title>
+<link rel="apple-touch-icon" href="../apple-touch-icon.png">
+<style>
+:root {
+  color-scheme: light;
+  --bg: #e1e6dc;
+  --panel: #f7f8f2;
+  --panel-muted: #eaf0e4;
+  --ink: #2d382d;
+  --muted: #5b6857;
+  --line: #c9d2c1;
+  --accent: #436348;
+  --accent-strong: #38573d;
+  --shade: rgba(41,62,37,.12);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #19211c;
+    --panel: #26322a;
+    --panel-muted: #303e33;
+    --ink: #edf1e5;
+    --muted: #b1bda8;
+    --line: #4b5c4d;
+    --accent: #b5cea0;
+    --accent-strong: #c3dcb2;
+    --shade: rgba(0,0,0,.25);
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  padding: 32px 20px 64px;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+main { max-width: 34rem; margin: 0 auto; }
+h1 { font-size: 1.6rem; line-height: 1.2; margin: 0 0 .4rem; }
+h2 { font-size: 1.1rem; margin: 2.2rem 0 .6rem; }
+p, li { color: var(--ink); }
+.lede { color: var(--muted); margin: 0 0 1.5rem; }
+ol { padding-left: 1.3rem; }
+li { margin-bottom: .55rem; }
+code, kbd {
+  background: var(--panel-muted);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: .06em .32em;
+  font: .87em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px;
+  margin: 1rem 0;
+  box-shadow: 0 14px 36px var(--shade);
+}
+button {
+  font: inherit;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--accent);
+  border: 0;
+  border-radius: 12px;
+  padding: .7rem 1.1rem;
+  width: 100%;
+  cursor: pointer;
+}
+button:hover { background: var(--accent-strong); }
+.status { color: var(--muted); font-size: .9rem; min-height: 1.4em; margin: .6rem 0 0; }
+pre {
+  background: var(--panel-muted);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  margin: 1rem 0 0;
+  max-height: 14rem;
+  overflow: auto;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre;
+  -webkit-overflow-scrolling: touch;
+}
+.note { color: var(--muted); font-size: .92rem; }
+a { color: var(--accent-strong); }
+@media (prefers-color-scheme: dark) { a { color: var(--accent); } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Songbook clipper for iPhone</h1>
+  <p class="lede">iOS cannot run the browser extension, so the same reader runs inside a Shortcut instead. Set this up once and clipping becomes a share sheet tap.</p>
+
+  <h2>1. Copy the clipper script</h2>
+  <div class="card">
+    <button id="copyButton" type="button">Copy the script</button>
+    <p class="status" id="copyStatus">About 22 KB of JavaScript.</p>
+  </div>
+
+  <h2>2. Build the Shortcut</h2>
+  <ol>
+    <li>Open <strong>Shortcuts</strong> and tap <strong>+</strong> to make a new one.</li>
+    <li>Tap <strong>Info</strong> (ⓘ) and turn on <strong>Show in Share Sheet</strong>.</li>
+    <li>Under <strong>Share Sheet Types</strong>, leave <strong>Safari web pages</strong> on and turn everything else off.</li>
+    <li>Add the action <strong>Run JavaScript on Web Page</strong>. Select all of its placeholder text and paste the script over it.</li>
+    <li>Add an <strong>If</strong> action. Set its input to <strong>Dictionary Value</strong> → key <code>error</code> from the JavaScript result, and the condition to <strong>has any value</strong>.</li>
+    <li>Inside the <em>If</em> branch, add <strong>Show Alert</strong> with that same dictionary value.</li>
+    <li>In the <strong>Otherwise</strong> branch, add <strong>Open URLs</strong> with <strong>Dictionary Value</strong> → key <code>url</code>.</li>
+    <li>Name it <strong>Clip to Songbook</strong> and save.</li>
+  </ol>
+
+  <h2>3. Use it</h2>
+  <ol>
+    <li>Open a song on Ultimate Guitar or GuitarTuna in <strong>Safari</strong> and let it load.</li>
+    <li>Tap <strong>Share</strong>, then <strong>Clip to Songbook</strong>.</li>
+    <li>Allow the script to run when iOS asks. It asks once per site.</li>
+    <li>Songbook opens and shows <em>Clipped song imported</em>.</li>
+  </ol>
+
+  <h2>Worth knowing</h2>
+  <p class="note">The Shortcut has to run from Safari. Other iOS browsers do not offer <em>Run JavaScript on Web Page</em>.</p>
+  <p class="note">A home screen web app keeps its own storage, separate from Safari's. The clip lands in the Safari copy of Songbook, so sign in to Supabase sync there as well and the song will reach your installed copy on its next sync.</p>
+  <p class="note">Clipping into a local development copy means editing <code>SONGBOOK_URL</code> at the top of the script before pasting it.</p>
+
+  <h2>The script</h2>
+  <p class="note">Here in full, if you would rather select it by hand.</p>
+  <pre id="scriptText">Loading…</pre>
+</main>
+<script>
+const SCRIPT_URL = "songbook-clip.js";
+const copyButton = document.querySelector("#copyButton");
+const copyStatus = document.querySelector("#copyStatus");
+const scriptText = document.querySelector("#scriptText");
+
+let snippet = "";
+
+fetch(SCRIPT_URL)
+  .then((response) => {
+    if (!response.ok) throw new Error(`Could not load the script (${response.status}).`);
+    return response.text();
+  })
+  .then((text) => {
+    snippet = text;
+    scriptText.textContent = text;
+    copyStatus.textContent = `${Math.round(text.length / 1024)} KB of JavaScript.`;
+  })
+  .catch((error) => {
+    scriptText.textContent = error.message;
+    copyStatus.textContent = "Open songbook-clip.js directly and copy it from there.";
+  });
+
+copyButton.addEventListener("click", async () => {
+  if (!snippet) {
+    copyStatus.textContent = "The script has not loaded yet.";
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(snippet);
+    copyStatus.textContent = "Copied. Paste it into Run JavaScript on Web Page.";
+  } catch {
+    // Safari refuses the clipboard outside a trusted gesture often enough that a
+    // selection fallback is worth more than an error message.
+    const range = document.createRange();
+    range.selectNodeContents(scriptText);
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    scriptText.scrollIntoView({ behavior: "smooth", block: "center" });
+    copyStatus.textContent = "Could not reach the clipboard. The script is selected below, so copy it from there.";
+  }
+});
+</script>
+</body>
+</html>

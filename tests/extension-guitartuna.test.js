@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import vm from "node:vm";
+import { element } from "./fixtures/fake-dom.js";
 
 async function loadGuitarTunaReader() {
   const source = await readFile(new URL("../extension/guitartuna-content.js", import.meta.url), "utf8");
@@ -116,8 +117,6 @@ test("falls back to GuitarTuna's descriptive heading when schema metadata is abs
   assert.equal(song.artist, "James Yorkston, The Big Eyes Family Players");
 });
 
-// A stand-in for the slice of the DOM the reader walks, so the extraction path
-// can be exercised without a browser.
 function fakeDocument({
   heading = "LITTLE MUSGRAVE chords by James Yorkston",
   schema = {
@@ -152,39 +151,4 @@ function fakeDocument({
   const doc = element({ tag: "BODY", children: [headingElement, ...jsonLd, root] });
   doc.location = { href: "https://guitartuna.com/chords/little-musgrave" };
   return doc;
-}
-
-function element({ tag, classes = [], attributes = {}, properties = {}, children = [], text = "" }) {
-  const node = {
-    tagName: tag,
-    children,
-    classList: { contains: (name) => classes.includes(name) },
-    style: { getPropertyValue: (name) => properties[name] || "" },
-    getAttribute: (name) => attributes[name] ?? null,
-    get textContent() {
-      return text || children.map((child) => child.textContent).join("");
-    },
-    querySelector: (selector) => node.querySelectorAll(selector)[0] || null,
-    querySelectorAll: (selector) => descendants(node).filter((candidate) => matches(candidate, selector))
-  };
-  return node;
-}
-
-function descendants(node) {
-  return node.children.flatMap((child) => [child, ...descendants(child)]);
-}
-
-function matches(node, selector) {
-  return selector.split(",").some((part) => {
-    const trimmed = part.trim();
-    if (trimmed.startsWith(".")) return node.classList.contains(trimmed.slice(1));
-    if (trimmed.startsWith("[")) {
-      const [, name, value] = trimmed.match(/^\[([^\]=]+)(?:="([^"]*)")?\]$/) || [];
-      return name ? node.getAttribute(name) !== null && (value === undefined || node.getAttribute(name) === value) : false;
-    }
-    if (trimmed.startsWith("#")) return false;
-    const [tag, attribute] = trimmed.split(/(?=\[)/);
-    if (node.tagName !== tag.toUpperCase()) return false;
-    return attribute ? matches(node, attribute) : true;
-  });
 }

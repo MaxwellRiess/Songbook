@@ -36,6 +36,7 @@ import { collectSongChords, initChordExplorer, songChordSequence } from "./chord
 import { initTuner } from "./tuner.js";
 import { ReharmonizationDrafts } from "./reharmonize.js";
 import { transposeChord } from "./chord-utils.js";
+import { decodeClipPayload } from "./clip-import.js";
 
 const reharmonizationDrafts = new ReharmonizationDrafts();
 
@@ -1174,7 +1175,7 @@ async function consumeClipImportFromLocation() {
   if (!match) return null;
 
   try {
-    const song = normalizeSong(JSON.parse(decodeBase64Url(match[1])));
+    const song = normalizeSong(decodeClipPayload(match[1]));
     const savedSong = await upsertStoredSong(song);
     history.replaceState(null, "", `${window.location.pathname}${window.location.search}`);
     return savedSong;
@@ -1184,13 +1185,6 @@ async function consumeClipImportFromLocation() {
     toast("Could not import clipped song.", true);
     return null;
   }
-}
-
-function decodeBase64Url(value) {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
-  const binary = atob(padded);
-  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
 }
 
 function registerServiceWorker() {
